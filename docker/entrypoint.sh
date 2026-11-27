@@ -18,7 +18,7 @@ if [ "$(stat -c %u "$WANKARR_DATA")" != "$PUID" ]; then
 fi
 
 if [ -n "${TZ:-}" ]; then
-  echo "date.timezone = $TZ" > /usr/local/etc/php/conf.d/zz-timezone.ini
+  echo "date.timezone = $TZ" > /usr/local/etc/php/conf.d/zzz-timezone.ini
 fi
 
 as_app() { runuser -u www-data -- "$@"; }
