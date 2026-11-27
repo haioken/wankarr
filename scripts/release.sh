@@ -35,7 +35,7 @@ notes=$(awk -v v="$new" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {if (on) e
 
 git add VERSION CHANGELOG.md
 git diff --cached --quiet || git commit -q -m "Release v$new"
-git tag -a "v$new" -m "wankarr v$new" -m "$notes"
+git tag -a "v$new" --cleanup=verbatim -m "wankarr v$new" -m "$notes"
 
 echo "Tagged v$new. Publish it with:"
 echo "  git push origin $branch --follow-tags"
