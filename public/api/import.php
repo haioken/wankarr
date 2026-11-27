@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_admin(true);
 
 /**
  * PUT  ?batch=&file=&name=&offset=&total=   upload one chunk (raw body)

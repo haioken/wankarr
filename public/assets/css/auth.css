@@ -1,0 +1,42 @@
+/* Sign-in, setup, sign-up and reset pages. */
+
+body.auth-page {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 20% 0%, color-mix(in srgb, var(--themeBlue) 25%, transparent), transparent 55%),
+    var(--pageBackground);
+}
+
+.auth-wrap { width: min(420px, 100%); }
+
+.auth-card {
+  padding: 28px 28px 24px;
+  border-radius: 6px;
+  background: var(--cardBackgroundColor);
+  box-shadow: 0 0 20px var(--cardShadowColor);
+}
+
+.auth-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.auth-logo { width: 52px; height: 52px; }
+.auth-name { color: var(--defaultColor); font-size: 24px; font-weight: 300; line-height: 1.1; }
+.auth-slogan { color: var(--helpTextColor); font-size: 12px; font-style: italic; }
+
+.auth-card h1 { margin: 0 0 8px; color: var(--defaultColor); font-size: 20px; font-weight: 400; }
+.auth-card > p { margin: 0 0 16px; }
+.auth-submit { width: 100%; margin-top: 4px; padding: 9px 16px; }
+
+.auth-error { margin: 0 0 12px; color: var(--dangerColor); }
+.auth-error.is-ok { color: var(--successColor); }
+.auth-notice {
+  padding: 8px 12px;
+  border-left: 3px solid var(--successColor);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--successColor) 12%, transparent);
+  color: var(--defaultColor);
+}
+
+.auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-top: 18px; font-size: 13px; }
+.check-row input[name="remember"] { accent-color: var(--primaryColor); }

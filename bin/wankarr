@@ -13,6 +13,11 @@ declare(strict_types=1);
  *   wankarr status                show tasks and library totals
  *   wankarr migrate               create/upgrade the database schema
  *   wankarr prune [--yes]         delete libraries removed from the config (and their series)
+ *   wankarr user list             list accounts
+ *   wankarr user add NAME [--admin] [--email=ADDR]   create an account (asks for a password)
+ *   wankarr user passwd NAME      set a new password (e.g. a locked-out admin)
+ *   wankarr user role NAME admin|user
+ *   wankarr user enable|disable|delete NAME
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -58,6 +63,61 @@ try {
             }
             wk_q('DELETE FROM libraries WHERE id IN (' . wk_in($orphans) . ')', array_column($orphans, 'id'));
             $out('Deleted.');
+            break;
+
+        case 'user':
+            $sub = $args[0] ?? 'list';
+            $name = $args[1] ?? '';
+            $find = function () use ($name) {
+                return wk_one('SELECT * FROM users WHERE username_key = ?', [mb_strtolower($name)])
+                    ?? throw new InvalidArgumentException("No user called '$name'");
+            };
+            $askPassword = function () use ($opts): string {
+                if (isset($opts['password']) && is_string($opts['password'])) {
+                    return $opts['password'];
+                }
+                $tty = posix_isatty(STDIN);
+                if ($tty) {
+                    system('stty -echo');
+                    fwrite(STDOUT, 'Password: ');
+                }
+                $pw = rtrim((string) fgets(STDIN), "\r\n");
+                if ($tty) {
+                    system('stty echo');
+                    fwrite(STDOUT, "\n");
+                }
+                return $pw;
+            };
+            switch ($sub) {
+                case 'list':
+                    foreach (wk_users() as $u) {
+                        $out(sprintf('%-20s %-6s %-11s %-28s %s', $u['username'], $u['role'], $u['status'], $u['email'] ?? '-', $u['max_rating'] ? "up to {$u['max_rating']}" : 'everything'));
+                    }
+                    break;
+                case 'add':
+                    $id = wk_user_create($name, $askPassword(), isset($opts['admin']) ? 'admin' : 'user', isset($opts['email']) ? (string) $opts['email'] : null);
+                    $out("Created user #$id");
+                    break;
+                case 'passwd':
+                    wk_user_set_password((int) $find()['id'], $askPassword());
+                    $out('Password changed; existing sessions were signed out');
+                    break;
+                case 'role':
+                    wk_user_update((int) $find()['id'], ['role' => $args[2] ?? '']);
+                    $out('Role updated');
+                    break;
+                case 'enable':
+                case 'disable':
+                    wk_user_update((int) $find()['id'], ['status' => $sub === 'enable' ? 'active' : 'disabled']);
+                    $out("User {$sub}d");
+                    break;
+                case 'delete':
+                    wk_user_delete((int) $find()['id']);
+                    $out('User deleted');
+                    break;
+                default:
+                    throw new InvalidArgumentException("Unknown user command '$sub'");
+            }
             break;
 
         case 'tasks':

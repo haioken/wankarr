@@ -74,7 +74,7 @@ services:
 
 ```sh
 docker compose up -d
-# open http://<host>:8484
+# open http://<host>:8484 and create the admin account
 ```
 
 To use another port, set `WANKARR_PORT` in a `.env` file next to
@@ -113,6 +113,14 @@ docker run -d --name wankarr \
 | `WANKARR_WORKER` | `1` | Built-in task worker for scheduled scans and metadata. `0` disables it |
 | `WANKARR_SCAN_INTERVAL` / `WANKARR_METADATA_INTERVAL` | `360` / `720` | Task intervals in minutes |
 | `WANKARR_DIRECTION` | `rtl` | Default reading direction (`rtl` or `ltr`) |
+| `WANKARR_SIGNUP` | off | `true` lets visitors create their own (non-admin) accounts |
+| `WANKARR_SIGNUP_MAX_RATING` | | Content limit for self-registered accounts: `safe`, `suggestive` or `erotica` |
+| `WANKARR_BASE_URL` | | Public address (e.g. `https://manga.example.com`). Required for emailed links |
+| `WANKARR_SMTP_HOST` / `_PORT` / `_SECURITY` | / `587` / `starttls` | Mail server; security is `starttls`, `tls` (port 465) or `none` |
+| `WANKARR_SMTP_USER` / `_PASS` | | Mail server login, if it needs one |
+| `WANKARR_SMTP_FROM` / `_FROM_NAME` | / `wankarr` | Sender address and name |
+| `WANKARR_SESSION_DAYS` | `30` | How long "keep me signed in" lasts without use |
+| `WANKARR_TRUST_PROXY` | off | `true` behind a reverse proxy: use `X-Forwarded-For`/`-Proto` for client IPs and secure cookies |
 
 Anything else from [`config.php`](config.php), such as the match threshold or
 title language, can be overridden by a partial array in `/config/config.php`:
@@ -170,6 +178,40 @@ same environment variables as the container, with `WANKARR_DATA` (default
 
 ## Using it
 
+### Accounts
+
+On first start (no accounts yet) wankarr asks you to create the **admin**
+account. If you can't reach the browser, use `bin/wankarr user add NAME --admin`
+(`docker exec -it wankarr php /app/bin/wankarr user add NAME --admin`).
+
+- **Roles:**
+  - **Admins** manage everything: import, rename, delete, metadata matching,
+    grouping, settings, tasks and users.
+  - **Users** read, search, and hide series from their own library.
+- **Per-account state:** reading progress, reader preferences and hidden series
+  belong to each account. Progress saved in a browser by earlier versions is
+  moved into the account on first sign-in.
+- **Content limits:** an admin can limit an account to series rated up to
+  *Safe*, *Suggestive* or *Erotica*, and choose whether it sees unrated
+  (unmatched) series. The limit applies everywhere: listings, search, series
+  pages, the reader, covers and page images.
+- **Sign-up** is off unless `WANKARR_SIGNUP=true`.
+  - With SMTP and `WANKARR_BASE_URL` configured, new accounts confirm their
+    email address, and **Forgot your password?** sends reset links.
+  - Without email, sign-ups wait for an admin to approve them under
+    **Settings → Users**.
+- **Users** (**Settings → Users**) is where admins add accounts and change
+  roles, content limits and passwords.
+- **Lost the only admin password?**
+  `bin/wankarr user passwd NAME` (also `user list`, `role`, `enable`,
+  `disable`, `delete`).
+
+Passwords are hashed with Argon2id (bcrypt where PHP lacks it). Sessions are
+random 256-bit tokens in an HttpOnly, SameSite cookie, and the database only
+stores their SHA-256 hash. Failed sign-ins are throttled per account and per
+address. Changing or resetting a password signs out the account's other
+sessions.
+
 ### Importing
 
 **Import** uploads volumes from your device: CBZ, CBR, CB7 and CBT archives,
@@ -199,10 +241,10 @@ limits don't apply.
   `c012`, `Chapter 5`, `#64` and `Title 001`, and set the reading order.
 - **Grouping fixes:** **merge** series and **move** or **split** volumes. These
   survive rescans.
-- **Bulk actions:** **Select** series (shift-click for ranges) to **Rescan**,
-  **Auto Rename** or **Delete** them. With the box unticked, Delete only hides
-  series; ticked, it removes their files after checking permissions.
-  **Hidden** lists hidden series.
+- **Bulk actions:** **Select** series (shift-click for ranges) to **Hide** them
+  from your own library. Admins can also **Rescan**, **Auto Rename** or
+  **Delete** them; Delete removes the files from disk after checking
+  permissions. **Hidden** lists the series you've hidden.
 - **Removed libraries** are hidden, not deleted, in case a path was mistyped.
   `bin/wankarr prune --yes` deletes them.
 
@@ -293,6 +335,9 @@ public/search.php       search                      public/api/cover.php       s
 public/import.php       import                      public/api/import.php      chunked upload, analyse, plan, commit
 public/settings.php     naming conventions          public/api/rename.php      rename preview / commit
 public/system.php       status, tasks, logs         public/api/series.php      match/rename/merge, bulk actions
+public/login.php …      sign in, setup, sign-up     public/api/auth.php        login, setup, sign-up, reset
+public/users.php        user management             public/api/users.php       create/update/delete users
+public/account.php      own password/email          public/api/progress.php    reading progress, preferences
 public/read.php         reader                      public/api/books.php       move/split volume
 bin/wankarr             CLI / task runner           public/api/tasks.php       task state / run now
 src/db.php              PDO, helpers, migrations    src/scanner.php            scan + grouping
@@ -300,6 +345,7 @@ src/catalog.php         queries, search, grouping   src/metadata.php           T
 src/text.php            normalising, fuzzy, parser  src/tasks.php              scheduler, background runner
 src/naming.php          templates and tokens        src/organize.php           rename plan/commit, delete
 src/import.php          staging, matching, copying  src/archive.php            zip/dir/CLI archive access
+src/auth.php            users, sessions, visibility src/mail.php               SMTP client
 public/assets/js/flipbook.js  page-curl engine      tests/run.php              unit tests
 Dockerfile, docker/     container image             .github/workflows/         CI, images, releases
 ```

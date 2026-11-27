@@ -1,35 +1,11 @@
-// Poster grids (library, search, series volumes): reading progress, broken
-// covers, poster size, multi-select with bulk actions, and refreshing when a
-// background task finishes.
-import { readProgress } from './progress.js';
+// Poster grids (library, search, series volumes): broken covers, poster
+// size, multi-select with bulk actions, and refreshing when a background
+// task finishes. Reading progress is rendered by the server.
 import { api, esc, modal, buttons, toast } from './ui.js';
 import { openRename } from './rename.js';
 
-/** Fraction read across a set of volumes (0–1), and whether all are finished. */
-export function progressOf(ids) {
-  if (!ids.length) return null;
-  let sum = 0, done = 0, any = false;
-  for (const id of ids) {
-    const p = readProgress(id);
-    if (!p || !p.total) continue;
-    any = true;
-    const f = Math.min(1, (p.page + 1) / p.total);
-    sum += f;
-    if (f >= 1) done++;
-  }
-  return any ? { fraction: sum / ids.length, finished: done === ids.length } : null;
-}
-
-/** Progress bars and broken-cover fallbacks for posters inside `root`. */
+/** Broken-cover fallbacks and poster sizing for posters inside `root`. */
 export function decoratePosters(root = document) {
-  for (const poster of root.querySelectorAll('[data-books]')) {
-    const p = progressOf(poster.dataset.books.split(',').filter(Boolean));
-    const bar = poster.querySelector('.poster-progress');
-    if (!p || !bar) continue;
-    bar.firstElementChild.style.width = `${Math.round(p.fraction * 100)}%`;
-    bar.classList.toggle('is-done', p.finished);
-    bar.title = p.finished ? 'Finished' : `${Math.round(p.fraction * 100)}% read`;
-  }
   for (const img of root.querySelectorAll('.poster-art img')) {
     const broken = () => img.classList.add('is-broken');
     if (img.complete && img.naturalWidth === 0) broken();
@@ -65,7 +41,6 @@ decoratePosters();
 
 const grid = document.querySelector('.js-selectable');
 const toolbar = document.querySelector('.js-toolbar');
-const hiddenView = document.querySelector('.library-page')?.dataset.hiddenView === '1';
 
 if (grid && toolbar) {
   const boxes = () => [...grid.querySelectorAll('.js-select')];
@@ -143,9 +118,11 @@ if (grid && toolbar) {
       btn.classList.add('is-spinning');
       try {
         const r = await api('api/series.php', { action, ids });
-        toast(action === 'rescan'
-          ? `Rescanned: ${r.added} added, ${r.updated} updated, ${r.removed} removed`
-          : `${ids.length} series unhidden`);
+        toast({
+          rescan: () => `Rescanned: ${r.added} added, ${r.updated} updated, ${r.removed} removed`,
+          hide: () => `${ids.length} series hidden from your library`,
+          unhide: () => `${ids.length} series back in your library`,
+        }[action]());
         setTimeout(() => location.reload(), 600);
       } catch (e) {
         toast(e.message, 'error');
@@ -159,50 +136,31 @@ if (grid && toolbar) {
 function openDelete(ids, listOf) {
   const body = document.createElement('div');
   body.innerHTML = `
-    <p>${hiddenView ? 'Delete' : 'Hide or delete'} these ${ids.length === 1 ? 'series' : `${ids.length} series`}:</p>
+    <p>Delete ${ids.length === 1 ? 'this series' : `these ${ids.length} series`} and their files from disk?</p>
     ${listOf(ids)}
-    <label class="check-row"><input type="checkbox" class="js-files"${hiddenView ? ' checked disabled' : ''}> <span><strong>Also delete the files from disk</strong><br>
-      <span class="muted">${hiddenView
-        ? 'Hidden series are already out of the library, so deleting them means deleting their files. Use Unhide to bring them back instead.'
-        : 'Unticked, the series are only hidden from the library and can be restored from Hidden.'}</span></span></label>
-    <div class="js-file-details" hidden></div>`;
+    <p class="muted">To only take series out of your own library, use <strong>Hide</strong> instead.</p>
+    <div class="js-file-details"><div class="spinner"></div></div>`;
   const m = modal({ title: ids.length === 1 ? 'Delete series' : `Delete ${ids.length} series`, body });
-  const files = body.querySelector('.js-files');
   const details = body.querySelector('.js-file-details');
-  let preview = null;
-  let confirmBtn;
-
-  const update = async () => {
-    confirmBtn.textContent = files.checked ? `Delete ${ids.length === 1 ? 'series and files' : `${ids.length} series and their files`}` : `Hide ${ids.length === 1 ? 'series' : `${ids.length} series`}`;
-    confirmBtn.className = `button ${files.checked ? 'danger' : 'primary'}`;
-    details.hidden = !files.checked;
-    if (!files.checked) return;
-    if (!preview) {
-      details.innerHTML = '<div class="spinner"></div>';
-      try { preview = await api('api/series.php', { action: 'delete-preview', ids }); } catch (e) { details.innerHTML = `<p class="error">${esc(e.message)}</p>`; return; }
-    }
+  buttons(m, [
+    { label: 'Cancel' },
+    { label: ids.length === 1 ? 'Delete series and files' : `Delete ${ids.length} series and their files`, danger: true, onClick: async () => {
+      m.setBusy(true);
+      try {
+        const r = await api('api/series.php', { action: 'delete', ids });
+        if (r.errors?.length) toast(r.errors.join(' · '), 'error');
+        else toast(`${r.deleted} series deleted`);
+        setTimeout(() => location.reload(), r.errors?.length ? 2500 : 500);
+      } catch (e) { toast(e.message, 'error'); m.setBusy(false); }
+    } },
+  ]);
+  api('api/series.php', { action: 'delete-preview', ids }).then((preview) => {
     const blocked = preview.filter((p) => p.errors.length);
     details.innerHTML = `
       <div class="alert alert-danger"><div><strong>This permanently deletes from disk:</strong>
         <ul class="modal-list">${preview.flatMap((p) => (p.folders.length ? p.folders.map((f) => `<li><code>${esc(f)}/</code> <span class="muted">(whole folder)</span></li>`) : p.paths.map((f) => `<li><code>${esc(f)}</code></li>`))).slice(0, 30).join('')}</ul></div></div>
       ${blocked.length ? `<div class="alert"><div><strong>Can't delete (nothing will be removed for these):</strong><ul>${blocked.map((p) => `<li>${esc(p.title)}: ${esc(p.errors.join('; '))}</li>`).join('')}</ul></div></div>` : ''}`;
-  };
-
-  buttons(m, [
-    { label: 'Cancel' },
-    { label: 'Hide', primary: true, onClick: async () => {
-      m.setBusy(true);
-      try {
-        const r = await api('api/series.php', { action: files.checked ? 'delete' : 'hide', ids });
-        if (r.errors?.length) toast(r.errors.join(' · '), 'error');
-        else toast(files.checked ? `${r.deleted} series deleted` : `${r.hidden} series hidden`);
-        setTimeout(() => location.reload(), r.errors?.length ? 2500 : 500);
-      } catch (e) { toast(e.message, 'error'); m.setBusy(false); }
-    } },
-  ]);
-  confirmBtn = m.footer.lastElementChild;
-  files.addEventListener('change', update);
-  update();
+  }).catch((e) => { details.innerHTML = `<p class="error">${esc(e.message)}</p>`; });
 }
 
 // The library listing reflects scan/metadata results, so refresh when they land.

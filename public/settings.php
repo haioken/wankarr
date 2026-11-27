@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_admin();
 
 $naming = wk_naming();
 

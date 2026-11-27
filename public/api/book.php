@@ -1,8 +1,12 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+$me = wk_require_user(true);
 
 $book = wk_book(wk_int($_GET['id'] ?? null) ?? 0);
+if ($book !== null && !wk_series_accessible((int) $book['series_id'])) {
+    $book = null; // outside this user's content limit
+}
 $node = $book ? wk_book_node($book) : null;
 if ($book === null) {
     wk_fail(404, 'Volume not found');
@@ -34,4 +38,8 @@ wk_json([
     'prev' => $link($prev),
     'next' => $link($next),
     'defaultDirection' => wk_config()['default_direction'] === 'ltr' ? 'ltr' : 'rtl',
+    'progress' => ($p = wk_progress_for_books((int) $me['id'], [(int) $book['id']])[(int) $book['id']] ?? null)
+        ? ['page' => (int) $p['page'], 'total' => (int) $p['total'], 'cover_alone' => $p['cover_alone'] === null ? null : (bool) $p['cover_alone']]
+        : null,
+    'prefs' => (object) $me['prefs'],
 ]);

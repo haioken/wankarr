@@ -250,6 +250,60 @@ function wk_db_migrations(): array
             // but are left out of listings and search.
             "ALTER TABLE series ADD COLUMN hidden {$t['int']} NOT NULL DEFAULT 0",
         ],
+        3 => function (array $t): array {
+            ['pk' => $pk, 'ref' => $ref, 'int' => $int, 'big' => $big, 'str' => $str, 'key' => $key, 'text' => $text, 'suffix' => $sfx] = $t;
+            return [
+                // Accounts. username_key is the lower-cased username (unique).
+                "CREATE TABLE users (
+                    id $pk, username $str NOT NULL, username_key $key NOT NULL, email $str NULL, email_key $key NULL,
+                    password_hash $str NOT NULL, role VARCHAR(16) NOT NULL DEFAULT 'user',
+                    status VARCHAR(16) NOT NULL DEFAULT 'active',
+                    max_rating VARCHAR(16) NULL, show_unrated $int NOT NULL DEFAULT 1,
+                    prefs $text NULL, created_at $big NOT NULL, last_login_at $big NULL
+                )$sfx",
+                'CREATE UNIQUE INDEX ux_users_username ON users (username_key)',
+                'CREATE UNIQUE INDEX ux_users_email ON users (email_key)',
+
+                // Login sessions; only a SHA-256 of the cookie token is stored.
+                "CREATE TABLE sessions (
+                    token_hash CHAR(64) NOT NULL PRIMARY KEY,
+                    user_id $ref NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    created_at $big NOT NULL, last_seen_at $big NOT NULL, expires_at $big NOT NULL,
+                    persistent $int NOT NULL DEFAULT 1, user_agent $str NULL, ip VARCHAR(64) NULL
+                )$sfx",
+                'CREATE INDEX ix_sessions_user ON sessions (user_id)',
+
+                // One-time tokens for email verification and password reset.
+                "CREATE TABLE user_tokens (
+                    token_hash CHAR(64) NOT NULL PRIMARY KEY,
+                    user_id $ref NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    purpose VARCHAR(16) NOT NULL, created_at $big NOT NULL, expires_at $big NOT NULL
+                )$sfx",
+                'CREATE INDEX ix_user_tokens_user ON user_tokens (user_id)',
+
+                "CREATE TABLE login_attempts (id $pk, username_key $key NOT NULL, ip VARCHAR(64) NOT NULL, at $big NOT NULL, success $int NOT NULL)$sfx",
+                'CREATE INDEX ix_login_attempts_at ON login_attempts (at)',
+
+                // Per-user reading state.
+                "CREATE TABLE user_progress (
+                    user_id $ref NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    book_id $ref NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+                    page $int NOT NULL DEFAULT 0, total $int NOT NULL DEFAULT 0, cover_alone $int NULL,
+                    updated_at $big NOT NULL,
+                    PRIMARY KEY (user_id, book_id)
+                )$sfx",
+                'CREATE INDEX ix_user_progress_book ON user_progress (book_id)',
+                'CREATE INDEX ix_user_progress_recent ON user_progress (user_id, updated_at)',
+
+                "CREATE TABLE user_hidden (
+                    user_id $ref NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    series_id $ref NOT NULL REFERENCES series(id) ON DELETE CASCADE,
+                    created_at $big NOT NULL,
+                    PRIMARY KEY (user_id, series_id)
+                )$sfx",
+                'CREATE INDEX ix_user_hidden_series ON user_hidden (series_id)',
+            ];
+        },
     ];
 }
 

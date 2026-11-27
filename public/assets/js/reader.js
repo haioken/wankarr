@@ -1,7 +1,7 @@
 // Reader controller: loads a volume from the server, drives the FlipBook,
 // and wires up the toolbars, settings, keyboard, wheel and progress.
 import { FlipBook } from './flipbook.js';
-import { readProgress, saveProgress, loadPrefs, savePrefs } from './progress.js';
+import { saveProgress, savePrefs } from './progress.js';
 
 const root = document.getElementById('reader');
 const $ = (sel) => root.querySelector(sel);
@@ -29,6 +29,8 @@ const ui = {
 
 const defaults = { direction: root.dataset.defaultDirection === 'ltr' ? 'ltr' : 'rtl', layout: 'auto', coverAlone: true };
 let prefs = { ...defaults };
+let serverProgress = null; // { page, total, cover_alone } for this volume
+let serverPrefs = {};       // { direction, layout } for this user
 
 function applyPrefsUI() {
   for (const group of root.querySelectorAll('.segmented')) {
@@ -107,7 +109,7 @@ function onChange({ pages, view, views }) {
   ui.count.textContent = pages.length ? (first === last ? `${first + 1}` : `${first + 1}–${last + 1}`) : '';
   ui.slider.value = pages.length ? first : 0;
   if (bookId && pages.length) {
-    saveProgress(bookId, title, last, total);
+    saveProgress(bookId, last, total);
     history.replaceState(null, '', `${location.pathname}${location.search}#p=${first + 1}`);
   }
   if (view > 0 && view < views - 1) ui.end.hidden = true;
@@ -184,10 +186,10 @@ ui.stage.addEventListener('wheel', (e) => {
 
 // --- loading ----------------------------------------------------------------------------
 
-function startPageFor(id) {
+function startPageFor() {
   const hash = /#p=(\d+)/.exec(location.hash);
   if (hash) return Math.max(0, +hash[1] - 1);
-  const saved = id && readProgress(id);
+  const saved = serverProgress;
   // Reopening a finished book starts again from the beginning.
   if (saved && saved.page + 1 < saved.total) return saved.page;
   return 0;
@@ -197,7 +199,8 @@ function start(pages, startPage) {
   total = pages.length;
   ui.slider.max = Math.max(0, total - 1);
   ui.total.textContent = total;
-  prefs = { ...defaults, ...loadPrefs(bookId) };
+  prefs = { ...defaults, ...serverPrefs };
+  if (serverProgress && serverProgress.cover_alone !== null && serverProgress.cover_alone !== undefined) prefs.coverAlone = !!serverProgress.cover_alone;
   applyPrefsUI();
   if (!book) book = new FlipBook(ui.stage, { onChange, onEdge, onTap });
   book.options = { ...book.options, ...prefs };
@@ -238,9 +241,10 @@ async function loadServer() {
   const v = encodeURIComponent(data.version);
   const id = encodeURIComponent(data.id);
   const pages = data.pages.map(([w, h], i) => ({ src: `api/page.php?id=${id}&p=${i}&v=${v}`, w, h }));
-  start(pages, startPageFor(bookId));
+  serverProgress = data.progress;
+  serverPrefs = data.prefs || {};
+  start(pages, startPageFor());
 }
 
-prefs = { ...defaults, ...loadPrefs(bookId) };
 applyPrefsUI();
 loadServer();

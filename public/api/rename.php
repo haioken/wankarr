@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_admin(true);
 
 /**
  * Manual rename only — nothing in the scheduler calls this.

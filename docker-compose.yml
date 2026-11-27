@@ -26,6 +26,17 @@ services:
       WANKARR_DB_PASS: change-me
       # Several libraries instead of /manga:
       # WANKARR_LIBRARIES: "Manga=/manga;Comics=/comics"
+      # Self sign-up (off by default) and email for confirmations/resets:
+      # WANKARR_SIGNUP: "true"
+      # WANKARR_SIGNUP_MAX_RATING: suggestive
+      # WANKARR_BASE_URL: https://manga.example.com
+      # WANKARR_SMTP_HOST: smtp.example.com
+      # WANKARR_SMTP_PORT: 587
+      # WANKARR_SMTP_USER: wankarr@example.com
+      # WANKARR_SMTP_PASS: change-me
+      # WANKARR_SMTP_FROM: wankarr@example.com
+      # Behind a reverse proxy:
+      # WANKARR_TRUST_PROXY: "true"
     volumes:
       - ./config:/config          # caches, logs, optional config.php
       - /path/to/manga:/manga     # your library (needs write access for Import/Rename)

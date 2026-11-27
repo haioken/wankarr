@@ -60,7 +60,10 @@ function wk_series_filters(array $o): array
     $params = $active ?: [0];
     $list = fn($v) => array_values(array_filter(array_map(fn($x) => is_string($x) ? trim($x) : $x, (array) $v), fn($x) => $x !== null && $x !== ''));
 
-    $where[] = !empty($o['hidden']) ? 's.hidden = 1' : 's.hidden = 0';
+    // Per-user: their hidden series (or only those) and content-rating limit.
+    [$vis, $visParams] = wk_visibility_sql('s', !empty($o['hidden']));
+    $where[] = $vis;
+    array_push($params, ...$visParams);
 
     // Free text: every word of every text term must appear somewhere.
     foreach ($list($o['q'] ?? []) as $text) {
@@ -259,12 +262,13 @@ function wk_search(array|string $texts, array $filters = [], int $limit = 100): 
     if ($q !== '' && !array_filter($filters)) {
         $esc = wk_like_escape();
         $active = array_keys(wk_libraries()) ?: [0];
+        [$vis, $visParams] = wk_visibility_sql('s');
         $books = wk_all(
             "SELECT b.id, b.title, b.series_id, b.volume, b.chapter, b.page_count, s.title AS series_title
              FROM books b JOIN series s ON s.id = b.series_id
-             WHERE s.hidden = 0 AND s.library_id IN (" . wk_in($active) . ") AND (b.rel_path LIKE ? $esc OR b.title LIKE ? $esc)
+             WHERE $vis AND s.library_id IN (" . wk_in($active) . ") AND (b.rel_path LIKE ? $esc OR b.title LIKE ? $esc)
              ORDER BY s.sort_title LIMIT 50",
-            [...$active, wk_like($q), wk_like($q)],
+            [...$visParams, ...$active, wk_like($q), wk_like($q)],
         );
     }
     return ['series' => array_slice($rows, 0, $limit), 'books' => $books, 'fuzzy' => $fuzzy, 'total' => count($rows)];
@@ -282,7 +286,9 @@ function wk_search_suggest(string $q, int $limit = 14): array
     }
     $active = array_keys(wk_libraries()) ?: [0];
     $in = wk_in($active);
-    $visible = "s.hidden = 0 AND s.library_id IN ($in)";
+    [$vis, $visParams] = wk_visibility_sql('s');
+    $visible = "$vis AND s.library_id IN ($in)";
+    $vp = [...$visParams, ...$active];
     $score = function (string $label) use ($nq): float {
         $nl = wk_norm($label);
         if ($nl === '') {
@@ -308,29 +314,29 @@ function wk_search_suggest(string $q, int $limit = 14): array
 
     $groups = ['genre' => 'Genre', 'explicit' => 'Genre', 'theme' => 'Theme', 'demographic' => 'Demographic'];
     foreach (wk_all("SELECT g.name, g.kind, COUNT(DISTINCT s.id) AS n FROM genres g JOIN metadata_genres mg ON mg.genre_id = g.id
-                     JOIN series s ON s.metadata_id = mg.metadata_id WHERE $visible GROUP BY g.name, g.kind", $active) as $g) {
+                     JOIN series s ON s.metadata_id = mg.metadata_id WHERE $visible GROUP BY g.name, g.kind", $vp) as $g) {
         $add('genre', $groups[$g['kind']] ?? 'Genre', $g['name'], $g['name'], (int) $g['n'], $score($g['name']));
     }
     foreach (wk_all("SELECT p.id, p.name, COUNT(DISTINCT s.id) AS n FROM people p JOIN metadata_people mp ON mp.person_id = p.id
-                     JOIN series s ON s.metadata_id = mp.metadata_id WHERE $visible GROUP BY p.id, p.name", $active) as $p) {
+                     JOIN series s ON s.metadata_id = mp.metadata_id WHERE $visible GROUP BY p.id, p.name", $vp) as $p) {
         $display = wk_person_name($p['name']);
         $add('person', 'Author', (int) $p['id'], $display, (int) $p['n'], max($score($display), $score($p['name'])));
     }
     foreach (['status' => 'Status', 'type' => 'Type'] as $col => $group) {
         foreach (wk_all("SELECT m.$col AS v, COUNT(*) AS n FROM series s JOIN metadata m ON m.id = s.metadata_id
-                         WHERE $visible AND m.$col IS NOT NULL GROUP BY m.$col", $active) as $r) {
+                         WHERE $visible AND m.$col IS NOT NULL GROUP BY m.$col", $vp) as $r) {
             $add($col, $group, $r['v'], $r['v'], (int) $r['n'], $score($r['v']));
         }
     }
     $ratings = array_column(wk_all("SELECT m.content_rating AS v, COUNT(*) AS n FROM series s JOIN metadata m ON m.id = s.metadata_id
-                                    WHERE $visible AND m.content_rating IS NOT NULL GROUP BY m.content_rating", $active), 'n', 'v');
+                                    WHERE $visible AND m.content_rating IS NOT NULL GROUP BY m.content_rating", $vp), 'n', 'v');
     foreach (WK_CONTENT_RATINGS as $key => $label) {
         if (isset($ratings[$key])) {
             $add('rating', 'Rating', $key, $label, (int) $ratings[$key], max($score($label), $score($key)));
         }
     }
     if (preg_match('/^(19|20)\d{2}$/', $nq)) {
-        $n = (int) wk_val("SELECT COUNT(*) FROM series s LEFT JOIN metadata m ON m.id = s.metadata_id WHERE $visible AND COALESCE(m.year, s.year) = ?", [...$active, (int) $nq]);
+        $n = (int) wk_val("SELECT COUNT(*) FROM series s LEFT JOIN metadata m ON m.id = s.metadata_id WHERE $visible AND COALESCE(m.year, s.year) = ?", [...$vp, (int) $nq]);
         $add('year', 'Year', (int) $nq, $nq, $n, $n ? 1.0 : 0);
     }
     foreach (wk_search([$q], [], 6)['series'] as $s) {
@@ -473,26 +479,32 @@ function wk_book_move(int $bookId, ?int $seriesId, ?string $newTitle = null): in
 /** Genres in use, with series counts, for filter menus. */
 function wk_genres_in_use(): array
 {
+    [$vis, $params] = wk_visibility_sql('s');
     return wk_all(
-        'SELECT g.name, g.kind, COUNT(DISTINCT s.id) AS n FROM genres g
+        "SELECT g.name, g.kind, COUNT(DISTINCT s.id) AS n FROM genres g
          JOIN metadata_genres mg ON mg.genre_id = g.id JOIN series s ON s.metadata_id = mg.metadata_id
-         WHERE s.hidden = 0 GROUP BY g.name, g.kind ORDER BY g.name',
+         WHERE $vis GROUP BY g.name, g.kind ORDER BY g.name",
+        $params,
     );
 }
 
 function wk_library_stats(): array
 {
+    // Counts reflect what the current user can see.
     $ids = array_keys(wk_libraries()) ?: [0];
-    $in = 'library_id IN (' . wk_in($ids) . ')';
-    $s = fn(string $sql) => (int) wk_val($sql, $ids);
+    $lib = 's.library_id IN (' . wk_in($ids) . ')';
+    [$vis, $vp] = wk_visibility_sql('s');
+    [$hid, $hp] = wk_visibility_sql('s', true);
+    $count = fn(string $sql, array $p) => (int) wk_val($sql, $p);
+    $books = "FROM books b JOIN series s ON s.id = b.series_id WHERE $lib AND $vis";
     return [
-        'series' => $s("SELECT COUNT(*) FROM series WHERE $in AND hidden = 0"),
-        'hidden' => $s("SELECT COUNT(*) FROM series WHERE $in AND hidden = 1"),
-        'books' => $s("SELECT COUNT(*) FROM books WHERE $in"),
-        'pages' => $s("SELECT COALESCE(SUM(page_count), 0) FROM books WHERE $in"),
-        'bytes' => $s("SELECT COALESCE(SUM(file_size), 0) FROM books WHERE $in"),
-        'matched' => $s("SELECT COUNT(*) FROM series WHERE $in AND match_status IN ('matched', 'manual')"),
-        'unmatched' => $s("SELECT COUNT(*) FROM series WHERE $in AND match_status = 'unmatched'"),
-        'pending' => $s("SELECT COUNT(*) FROM series WHERE $in AND match_status = 'pending'"),
+        'series' => $count("SELECT COUNT(*) FROM series s WHERE $lib AND $vis", [...$ids, ...$vp]),
+        'hidden' => $count("SELECT COUNT(*) FROM series s WHERE $lib AND $hid", [...$ids, ...$hp]),
+        'books' => $count("SELECT COUNT(*) $books", [...$ids, ...$vp]),
+        'pages' => $count("SELECT COALESCE(SUM(b.page_count), 0) $books", [...$ids, ...$vp]),
+        'bytes' => $count("SELECT COALESCE(SUM(b.file_size), 0) $books", [...$ids, ...$vp]),
+        'matched' => $count("SELECT COUNT(*) FROM series s WHERE $lib AND $vis AND s.match_status IN ('matched', 'manual')", [...$ids, ...$vp]),
+        'unmatched' => $count("SELECT COUNT(*) FROM series s WHERE $lib AND $vis AND s.match_status = 'unmatched'", [...$ids, ...$vp]),
+        'pending' => $count("SELECT COUNT(*) FROM series s WHERE $lib AND $vis AND s.match_status = 'pending'", [...$ids, ...$vp]),
     ];
 }

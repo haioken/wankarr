@@ -60,3 +60,8 @@
   .info-list > div { flex-direction: column; gap: 0; }
   .card { padding: 14px; }
 }
+.state.warn { color: var(--warningColor); }
+.users-table .actions { white-space: nowrap; }
+.users-table .actions .button { padding: 4px 12px; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.modal-footer .button.danger { margin-right: auto; }

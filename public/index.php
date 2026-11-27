@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_user();
 
 $sort = array_key_exists($_GET['sort'] ?? '', WK_SERIES_SORTS) ? $_GET['sort'] : 'title';
 $match = in_array($_GET['match'] ?? '', ['matched', 'unmatched', 'pending', 'ignored'], true) ? $_GET['match'] : null;
@@ -11,7 +12,14 @@ $opts = ['sort' => $sort, 'match' => $match, 'rating' => $rating, 'library' => $
 
 $libs = wk_libraries();
 $series = wk_series_list($opts);
+$admin = $me['role'] === 'admin';
+if (!$admin && $match) {
+    $match = null; // metadata review is an admin workflow
+    $opts['match'] = null;
+    $series = wk_series_list($opts);
+}
 $bookIds = wk_series_book_ids(array_map('intval', array_column($series, 'id')));
+$progress = wk_series_progress((int) $me['id'], $bookIds);
 $stats = wk_library_stats();
 $tasks = array_column(wk_tasks_state(), null, 'name');
 $scanning = ($tasks['scan']['running'] ?? false) || ($tasks['scan']['queued'] ?? false);
@@ -35,6 +43,8 @@ wk_page_start($title, ['library'], $active);
   <div class="toolbar-section toolbar-default">
     <?php if ($hidden): ?>
       <?= wk_toolbar_button('back', 'Library', ['href' => './']) ?>
+    <?php elseif (!$admin): ?>
+      <?= wk_toolbar_button('eye-off', $stats['hidden'] ? "Hidden ({$stats['hidden']})" : 'Hidden', ['href' => './?hidden=1', 'title' => 'Series you\'ve hidden']) ?>
     <?php else: ?>
       <?= wk_toolbar_button('refresh', 'Update Library', ['class' => 'js-run-task' . ($scanning ? ' is-spinning' : ''), 'data-task' => 'scan', 'title' => 'Scan library folders for new, changed and removed volumes']) ?>
       <?= wk_toolbar_button('match', 'Refresh Metadata', ['class' => 'js-run-task' . (($tasks['metadata']['running'] ?? false) ? ' is-spinning' : ''), 'data-task' => 'metadata', 'title' => 'Match new series and refresh stale metadata']) ?>
@@ -50,10 +60,15 @@ wk_page_start($title, ['library'], $active);
     <?php if ($hidden): ?>
       <?= wk_toolbar_button('eye', 'Unhide', ['class' => 'js-bulk', 'data-action' => 'unhide']) ?>
     <?php else: ?>
+      <?= wk_toolbar_button('eye-off', 'Hide', ['class' => 'js-bulk', 'data-action' => 'hide', 'title' => 'Hide from your library (only for you)']) ?>
+    <?php endif ?>
+    <?php if ($admin && !$hidden): ?>
       <?= wk_toolbar_button('refresh', 'Rescan', ['class' => 'js-bulk', 'data-action' => 'rescan']) ?>
       <?= wk_toolbar_button('rename', 'Auto Rename', ['class' => 'js-bulk', 'data-action' => 'rename']) ?>
     <?php endif ?>
-    <?= wk_toolbar_button('trash', 'Delete', ['class' => 'js-bulk danger', 'data-action' => 'delete']) ?>
+    <?php if ($admin): ?>
+      <?= wk_toolbar_button('trash', 'Delete', ['class' => 'js-bulk danger', 'data-action' => 'delete', 'title' => 'Delete series and their files from disk']) ?>
+    <?php endif ?>
   </div>
   <div class="toolbar-section toolbar-right">
     <details class="menu">
@@ -67,10 +82,12 @@ wk_page_start($title, ['library'], $active);
     <details class="menu">
       <summary class="toolbar-button<?= ($match || $rating) ? ' is-active' : '' ?>"><?= wk_icon('filter') ?><span>Filter</span></summary>
       <div class="menu-items">
-        <div class="menu-heading">Metadata</div>
-        <?php foreach ($filterLabels as $key => $label): ?>
-          <a class="menu-item<?= ($match ?? '') === $key ? ' is-selected' : '' ?>" href="<?= h($url(['match' => $key ?: null])) ?>"><?= h($label) ?></a>
-        <?php endforeach ?>
+        <?php if ($admin): ?>
+          <div class="menu-heading">Metadata</div>
+          <?php foreach ($filterLabels as $key => $label): ?>
+            <a class="menu-item<?= ($match ?? '') === $key ? ' is-selected' : '' ?>" href="<?= h($url(['match' => $key ?: null])) ?>"><?= h($label) ?></a>
+          <?php endforeach ?>
+        <?php endif ?>
         <div class="menu-heading">Content rating</div>
         <a class="menu-item<?= $rating === null ? ' is-selected' : '' ?>" href="<?= h($url(['rating' => null])) ?>">Any</a>
         <?php foreach (WK_CONTENT_RATINGS as $key => $label): ?>
@@ -92,7 +109,7 @@ wk_page_start($title, ['library'], $active);
 
 <div class="content-body">
   <?php if ($hidden): ?>
-    <p class="muted page-intro">Hidden series stay in the database and keep picking up new volumes when the library is scanned, but they don't appear in the library or in search. Select some to unhide or delete them.</p>
+    <p class="muted page-intro">Series you've hidden. They stay out of your library and search (other people still see them) and keep getting new volumes. Select some to unhide them.</p>
   <?php endif ?>
 
   <?php if (!array_filter($libs, fn($l) => $l['available'])): ?>
@@ -105,15 +122,19 @@ wk_page_start($title, ['library'], $active);
     </div>
   <?php elseif (!$series && !$hidden && $stats['series'] === 0): ?>
     <div class="empty-state">
-      <?php if ($scanning): ?>
+      <?php if ($scanning && $admin): ?>
         <div class="spinner"></div>
         <h2>Scanning your library…</h2>
         <p class="js-scan-message"><?= h($tasks['scan']['message'] ?? '') ?></p>
       <?php else: ?>
         <?= wk_icon('folder') ?>
         <h2>Nothing here yet</h2>
-        <p>Import volumes from this device, or add folders of CBZ, CBR, CB7 archives or images to your library and update it.</p>
-        <div class="end-actions"><a class="button primary" href="import.php">Import</a> <button type="button" class="button js-run-task" data-task="scan">Update Library</button></div>
+        <?php if ($admin): ?>
+          <p>Import volumes from this device, or add folders of CBZ, CBR, CB7 archives or images to your library and update it.</p>
+          <div class="end-actions"><a class="button primary" href="import.php">Import</a> <button type="button" class="button js-run-task" data-task="scan">Update Library</button></div>
+        <?php else: ?>
+          <p>An admin hasn't added any manga yet.</p>
+        <?php endif ?>
       <?php endif ?>
     </div>
   <?php elseif (!$series): ?>
@@ -126,17 +147,17 @@ wk_page_start($title, ['library'], $active);
           $sub = array_filter([$s['year'], $plural($books, 'volume')]);
       ?>
         <div class="poster-cell" data-series="<?= $id ?>" data-title="<?= h($s['title']) ?>">
-          <a class="poster" href="series.php?id=<?= $id ?>" data-books="<?= h(implode(',', $bookIds[$id] ?? [])) ?>">
+          <a class="poster" href="series.php?id=<?= $id ?>">
             <div class="poster-art">
               <div class="poster-placeholder"><?= wk_icon('book') ?></div>
               <img src="api/cover.php?series=<?= $id ?>" alt="" loading="lazy" decoding="async">
-              <?php if ($s['match_status'] === 'unmatched'): ?>
+              <?php if ($admin && $s['match_status'] === 'unmatched'): ?>
                 <span class="poster-badge badge-warning" title="No confident metadata match — review it"><?= wk_icon('warning', 'icon icon-sm') ?></span>
               <?php elseif (in_array($s['content_rating'], ['erotica', 'pornographic'], true)): ?>
                 <span class="poster-badge badge-danger"><?= h(WK_CONTENT_RATINGS[$s['content_rating']]) ?></span>
               <?php endif ?>
             </div>
-            <div class="poster-progress"><span></span></div>
+            <?= wk_progress_bar($progress[$id] ?? null) ?>
             <div class="poster-title" title="<?= h($s['title']) ?>"><?= h($s['title']) ?></div>
             <div class="poster-sub"><?= h(implode(' · ', $sub)) ?><?php if ($s['score']): ?> · <span class="poster-score"><?= wk_icon('star', 'icon icon-xs') ?><?= h(number_format((float) $s['score'], 1)) ?></span><?php endif ?></div>
           </a>
@@ -153,7 +174,7 @@ wk_page_start($title, ['library'], $active);
 <footer class="page-footer">
   <span><?= count($series) ?> series shown</span>
   <span><?= number_format($stats['series']) ?> series · <?= number_format($stats['books']) ?> volumes · <?= number_format($stats['pages']) ?> pages · <?= h(wk_bytes($stats['bytes'])) ?></span>
-  <?php if ($stats['unmatched']): ?><a href="./?match=unmatched"><?= $stats['unmatched'] ?> need review</a><?php endif ?>
+  <?php if ($admin && $stats['unmatched']): ?><a href="./?match=unmatched"><?= $stats['unmatched'] ?> need review</a><?php endif ?>
   <?php if ($stats['hidden'] && !$hidden): ?><a href="./?hidden=1"><?= $stats['hidden'] ?> hidden</a><?php endif ?>
 </footer>
 </div>

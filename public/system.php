@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_admin();
 
 $tasks = wk_tasks_state();
 $stats = wk_library_stats();

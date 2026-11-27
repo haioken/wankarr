@@ -663,3 +663,21 @@ button { font: inherit; color: inherit; }
 .table th { padding: 8px; border-bottom: 1px solid var(--borderColor); color: var(--helpTextColor); font-weight: 500; text-align: left; white-space: nowrap; }
 .table td { padding: 8px; border-bottom: 1px solid color-mix(in srgb, var(--borderColor) 50%, transparent); vertical-align: top; }
 .end-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 8px; }
+
+/* Header user menu */
+.user-menu { display: flex; }
+.user-button { display: inline-flex; width: auto; gap: 8px; padding: 0 8px; list-style: none; }
+.user-button::-webkit-details-marker { display: none; }
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .25);
+  color: #fff;
+  font-weight: 600;
+}
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-menu .menu-item { width: 100%; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
+@media (max-width: 600px) { .user-name { display: none; } }

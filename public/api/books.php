@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_admin(true);
 
 /** POST {action: 'move', id, series_id | new_title} — regroup a book. */
 

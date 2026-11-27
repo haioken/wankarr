@@ -1,8 +1,12 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_user();
 
 $book = wk_book(wk_int($_GET['id'] ?? null) ?? 0);
+if ($book !== null && !wk_series_accessible((int) $book['series_id'])) {
+    $book = null;
+}
 if ($book === null) {
     http_response_code(404);
     wk_head('Not found');

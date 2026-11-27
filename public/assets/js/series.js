@@ -1,6 +1,5 @@
 // Series page: continue reading, metadata matching, rename, merge, move book.
 import { api, esc, modal, buttons, toast, seriesPicker } from './ui.js';
-import { readProgress } from './progress.js';
 import { openRename } from './rename.js';
 import './library.js';
 
@@ -11,11 +10,16 @@ const seriesTitle = page.dataset.title;
 
 // --- continue reading ---------------------------------------------------------------
 
-const books = [...document.querySelectorAll('.book[data-book]')].map((el) => +el.dataset.book);
+const bookEls = [...document.querySelectorAll('.book[data-book]')];
+const books = bookEls.map((el) => +el.dataset.book);
+const progressOf = (id) => {
+  const el = bookEls.find((b) => +b.dataset.book === id);
+  return el?.dataset.total ? { page: +el.dataset.page, total: +el.dataset.total } : null;
+};
 const cont = document.querySelector('.js-continue');
 if (cont && books.length) {
-  const started = books.find((id) => { const p = readProgress(id); return p && p.page + 1 < p.total; });
-  const unread = books.find((id) => { const p = readProgress(id); return !p || p.page + 1 < p.total; });
+  const started = books.find((id) => { const p = progressOf(id); return p && p.page + 1 < p.total; });
+  const unread = books.find((id) => { const p = progressOf(id); return !p || p.page + 1 < p.total; });
   const target = started ?? unread ?? books[0];
   cont.href = `read.php?id=${target}`;
   const label = cont.querySelector('span');
@@ -35,6 +39,15 @@ async function busy(btn, fn) {
   btn?.classList.add('is-spinning');
   try { await fn(); } catch (e) { toast(e.message, 'error'); btn?.classList.remove('is-spinning'); }
 }
+
+// --- hide / unhide (per user) -------------------------------------------------------------
+
+document.querySelector('.js-hide')?.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  const hide = e.currentTarget.dataset.hide === '1';
+  await api('api/series.php', { action: hide ? 'hide' : 'unhide', ids: [seriesId] });
+  toast(hide ? 'Hidden from your library' : 'Back in your library');
+  setTimeout(() => location.reload(), 500);
+}));
 
 // --- refresh / unmatch -----------------------------------------------------------------
 

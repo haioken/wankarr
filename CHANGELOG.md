@@ -5,6 +5,16 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+### Added
+- Accounts: first start asks for an admin; database-backed users with Argon2id passwords, hashed session tokens, sign-in throttling, account page (email, password, sessions) and `bin/wankarr user …` commands.
+- Two roles: admins manage library, metadata, files, settings and users; users read, search and hide series.
+- Per-user reading progress, reader preferences and hidden series (progress from older browser storage is imported on first sign-in).
+- Per-user content-rating limit (and whether unrated series show), enforced in listings, search, pages, covers and images.
+- Optional self sign-up (`WANKARR_SIGNUP`, off by default) with email confirmation over SMTP, or admin approval when email isn't configured; password reset by email.
+
+### Changed
+- Hiding a series is now per user; Delete always removes files and is admin-only.
+
 ## [0.3.0] - 2026-11-27
 
 ### Added

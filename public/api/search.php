@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_user(true);
 
 /** Search-box suggestions: facets (genre, author, status, …) and series. */
 

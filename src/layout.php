@@ -101,7 +101,7 @@ function wk_head(string $title, array $css = [], string $bodyClass = ''): void
 <link rel="stylesheet" href="<?= h(wk_asset("css/$sheet.css")) ?>">
 <?php endforeach ?>
 </head>
-<body class="<?= h($bodyClass) ?>">
+<body class="<?= h($bodyClass) ?>" data-role="<?= h(wk_auth_user()['role'] ?? '') ?>">
 <?php
 }
 
@@ -122,9 +122,40 @@ function wk_header(): void
   </div>
   <div class="header-actions">
     <?= wk_theme_button() ?>
+    <?php if ($u = wk_auth_user()): ?>
+      <details class="menu user-menu">
+        <summary class="header-icon user-button" title="Signed in as <?= h($u['username']) ?>">
+          <span class="avatar" aria-hidden="true"><?= h(mb_strtoupper(mb_substr($u['username'], 0, 1))) ?></span>
+          <span class="user-name"><?= h($u['username']) ?></span>
+        </summary>
+        <div class="menu-items">
+          <div class="menu-heading"><?= h($u['username']) ?> · <?= h(WK_ROLES[$u['role']] ?? $u['role']) ?></div>
+          <a class="menu-item" href="account.php">Account</a>
+          <?php if ($u['role'] === 'admin'): ?><a class="menu-item" href="users.php">Users</a><?php endif ?>
+          <button type="button" class="menu-item js-logout">Sign out</button>
+        </div>
+      </details>
+    <?php endif ?>
   </div>
 </header>
 <?php
+}
+
+/** Minimal shell for sign-in, setup and recovery pages. */
+function wk_auth_start(string $title): void
+{
+    wk_head($title, ['auth'], 'auth-page');
+    ?>
+<main class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand"><?= wk_logo('logo-mark auth-logo') ?><div><div class="auth-name">wankarr</div><div class="auth-slogan">What are ya...</div></div></div>
+<?php
+}
+
+function wk_auth_end(): void
+{
+    echo "  </div>\n</main>\n";
+    wk_foot(['auth']);
 }
 
 function wk_sidebar(string $active = 'library'): void
@@ -139,6 +170,7 @@ function wk_sidebar(string $active = 'library'): void
         'import' => ['import.php', 'open', 'Import', []],
         'settings' => ['settings.php', 'settings', 'Settings', [
             ['settings.php#naming', 'Media Management', 'settings-naming'],
+            ['users.php', 'Users', 'settings-users'],
         ]],
         'system' => ['system.php', 'system', 'System', [
             ['system.php#status', 'Status', 'system-status'],
@@ -146,6 +178,10 @@ function wk_sidebar(string $active = 'library'): void
             ['system.php#logs', 'Logs', 'system-logs'],
         ]],
     ];
+    if (!wk_is_admin()) {
+        // Readers get the library and search; management stays with admins.
+        $items = array_intersect_key($items, ['library' => 1, 'search' => 1]);
+    }
     ?>
 <nav class="sidebar" aria-label="Main">
   <?php foreach ($items as $key => [$href, $icon, $label, $children]): ?>
@@ -207,6 +243,17 @@ function wk_foot(array $modules = []): void
 </body>
 </html>
 <?php
+}
+
+/** Reading-progress strip under a poster (server-rendered). */
+function wk_progress_bar(?array $p): string
+{
+    if (!$p) {
+        return '<div class="poster-progress"><span></span></div>';
+    }
+    $pct = (int) round($p['fraction'] * 100);
+    $title = $p['finished'] ? 'Finished' : "$pct% read";
+    return '<div class="poster-progress' . ($p['finished'] ? ' is-done' : '') . '" title="' . $title . '"><span style="width:' . $pct . '%"></span></div>';
 }
 
 function wk_rating_badge(?string $rating): string

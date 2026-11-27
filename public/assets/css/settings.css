@@ -16,3 +16,8 @@
   cursor: pointer;
 }
 .token:hover { border-color: var(--themeBlue); color: var(--themeBlue); }
+
+.narrow-form { max-width: 420px; }
+.form-message { margin: 0 0 10px; }
+.form-message.ok { color: var(--successColor); }
+.form-message.error { color: var(--dangerColor); }

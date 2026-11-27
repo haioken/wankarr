@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_user();
 
 /**
  * Search. Every term is a pill: free text, genre, author, status, type,
@@ -22,8 +23,9 @@ $filters = array_filter([
 $searching = $texts || $filters;
 $result = $searching ? wk_search($texts, $filters) : ['series' => [], 'books' => [], 'fuzzy' => false, 'total' => 0];
 $bookIds = wk_series_book_ids(array_map('intval', array_column($result['series'], 'id')));
+$progress = wk_series_progress((int) $me['id'], $bookIds);
 
-function wk_search_results(array $result, array $bookIds, bool $searching): void
+function wk_search_results(array $result, array $progress, bool $searching): void
 {
     if (!$searching) {
         echo '<div class="empty-state">' . wk_icon('search') . '<h2>Search your library</h2><p>Type a title in any language, an author, a genre, a status or a year. Pick suggestions to narrow things down; typos are fine.</p></div>';
@@ -39,12 +41,12 @@ function wk_search_results(array $result, array $bookIds, bool $searching): void
       </h2>
       <div class="poster-grid js-grid">
         <?php foreach ($result['series'] as $s): $id = (int) $s['id']; $n = (int) $s['book_count']; ?>
-          <a class="poster" href="series.php?id=<?= $id ?>" data-books="<?= h(implode(',', $bookIds[$id] ?? [])) ?>">
+          <a class="poster" href="series.php?id=<?= $id ?>">
             <div class="poster-art">
               <div class="poster-placeholder"><?= wk_icon('book') ?></div>
               <img src="api/cover.php?series=<?= $id ?>" alt="" loading="lazy" decoding="async">
             </div>
-            <div class="poster-progress"><span></span></div>
+            <?= wk_progress_bar($progress[$id] ?? null) ?>
             <div class="poster-title" title="<?= h($s['title']) ?>"><?= h($s['title']) ?></div>
             <div class="poster-sub"><?= h(implode(' · ', array_filter([$s['year'], $s['meta_type'], $n . ($n === 1 ? ' volume' : ' volumes')]))) ?></div>
           </a>
@@ -63,7 +65,7 @@ function wk_search_results(array $result, array $bookIds, bool $searching): void
 
 if (!empty($_GET['partial'])) {
     header('Cache-Control: no-store');
-    wk_search_results($result, $bookIds, (bool) $searching);
+    wk_search_results($result, $progress, (bool) $searching);
     exit;
 }
 
@@ -101,6 +103,6 @@ wk_page_start('Search', ['library', 'search'], 'search');
     </div>
     <div class="facet-suggest js-facet-suggest" id="facet-suggest" role="listbox" hidden></div>
   </div>
-  <div class="js-results"><?php wk_search_results($result, $bookIds, (bool) $searching) ?></div>
+  <div class="js-results"><?php wk_search_results($result, $progress, (bool) $searching) ?></div>
 </div>
 <?php wk_page_end(['search']);

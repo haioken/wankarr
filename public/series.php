@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
+$me = wk_require_user();
 
-$series = wk_series(wk_int($_GET['id'] ?? null) ?? 0);
+$sid = wk_int($_GET['id'] ?? null) ?? 0;
+$series = wk_series_accessible($sid) ? wk_series($sid) : null;
 if ($series === null) {
     http_response_code(404);
     wk_page_start('Not found');
@@ -14,6 +16,17 @@ if ($series === null) {
 $id = (int) $series['id'];
 $m = $series['meta'];
 $books = wk_series_books($id);
+$admin = $me['role'] === 'admin';
+$isHidden = wk_is_hidden((int) $me['id'], $id);
+$bookProgress = wk_progress_for_books((int) $me['id'], array_column($books, 'id'));
+$bookFraction = function (int $bid) use ($bookProgress): ?array {
+    $p = $bookProgress[$bid] ?? null;
+    if (!$p || !$p['total']) {
+        return null;
+    }
+    $f = min(1, ($p['page'] + 1) / $p['total']);
+    return ['fraction' => $f, 'finished' => $f >= 1];
+};
 $status = $series['match_status'];
 $isMatched = in_array($status, ['matched', 'manual'], true) && $m;
 
@@ -51,14 +64,19 @@ wk_page_start($series['title'], ['library', 'series'], 'library');
 <div class="page-toolbar">
   <div class="toolbar-section">
     <?= wk_toolbar_button('play', 'Read', ['href' => $books ? 'read.php?id=' . (int) $books[0]['id'] : '#', 'class' => 'js-continue']) ?>
+    <?= $isHidden
+        ? wk_toolbar_button('eye', 'Unhide', ['class' => 'js-hide', 'data-hide' => '0', 'title' => 'Show this series in your library again'])
+        : wk_toolbar_button('eye-off', 'Hide', ['class' => 'js-hide', 'data-hide' => '1', 'title' => 'Hide this series from your library (only for you)']) ?>
+    <?php if ($admin): ?>
     <?= wk_toolbar_button('refresh', 'Refresh', ['class' => 'js-refresh', 'title' => $isMatched ? 'Re-fetch metadata' : 'Try automatic matching again']) ?>
     <?= wk_toolbar_button('match', 'Match…', ['class' => 'js-match', 'title' => 'Search the metadata provider and pick the right entry']) ?>
     <?= wk_toolbar_button('edit', 'Edit', ['class' => 'js-edit']) ?>
     <?= wk_toolbar_button('merge', 'Merge…', ['class' => 'js-merge', 'title' => 'Merge this series into another one']) ?>
     <?= wk_toolbar_button('rename', 'Rename…', ['class' => 'js-rename', 'title' => 'Preview renaming this series\' folders and files to the naming convention']) ?>
+    <?php endif ?>
   </div>
   <div class="toolbar-section toolbar-right">
-    <?php if ($m): ?>
+    <?php if ($m && $admin): ?>
       <?= wk_toolbar_button('unlink', 'Unmatch', ['class' => 'js-unmatch', 'title' => 'Remove metadata and stop automatic matching for this series']) ?>
     <?php endif ?>
   </div>
@@ -88,7 +106,8 @@ wk_page_start($series['title'], ['library', 'series'], 'library');
         <?php if ($m && $m['rank_overall']): ?><span class="chip">Rank #<?= h(number_format((int) $m['rank_overall'])) ?></span><?php endif ?>
         <?php if ($m && $m['popularity']): ?><span class="chip">Popularity #<?= h(number_format((int) $m['popularity'])) ?></span><?php endif ?>
         <?= $m ? wk_rating_badge($m['content_rating']) : '' ?>
-        <?php if ($status === 'unmatched'): ?><span class="chip chip-warning">Needs review</span><?php endif ?>
+        <?php if ($isHidden): ?><span class="chip">Hidden by you</span><?php endif ?>
+        <?php if ($admin && $status === 'unmatched'): ?><span class="chip chip-warning">Needs review</span><?php endif ?>
         <?php if ($status === 'ignored'): ?><span class="chip">Matching disabled</span><?php endif ?>
         <?php if ($status === 'pending'): ?><span class="chip">Metadata pending</span><?php endif ?>
       </div>
@@ -132,7 +151,7 @@ wk_page_start($series['title'], ['library', 'series'], 'library');
 </header>
 
 <div class="content-body">
-  <?php if ($status === 'unmatched'): ?>
+  <?php if ($admin && $status === 'unmatched'): ?>
     <div class="alert alert-warning">
       <?= wk_icon('warning') ?>
       <div>
@@ -147,18 +166,19 @@ wk_page_start($series['title'], ['library', 'series'], 'library');
   <h2 class="section-title">Volumes <span class="muted"><?= count($books) ?></span></h2>
   <div class="poster-grid book-grid js-grid">
     <?php foreach ($books as $b): $bid = (int) $b['id']; ?>
-      <div class="poster book" data-book="<?= $bid ?>" data-books="<?= $bid ?>">
+      <?php $bp = $bookProgress[$bid] ?? null; ?>
+      <div class="poster book" data-book="<?= $bid ?>" data-page="<?= $bp ? (int) $bp['page'] : '' ?>" data-total="<?= $bp ? (int) $bp['total'] : '' ?>">
         <a class="poster-link" href="read.php?id=<?= $bid ?>" title="<?= h($b['rel_path']) ?>">
           <div class="poster-art">
             <div class="poster-placeholder"><?= wk_icon('book') ?></div>
             <img src="api/cover.php?book=<?= $bid ?>" alt="" loading="lazy" decoding="async">
             <span class="poster-badge"><?= h(['dir' => 'IMG', 'zip' => 'CBZ', 'rar' => 'CBR', '7z' => 'CB7', 'tar' => 'CBT'][$b['format']] ?? '') ?></span>
           </div>
-          <div class="poster-progress"><span></span></div>
+          <?= wk_progress_bar($bookFraction($bid)) ?>
           <div class="poster-title"><?= h($b['title']) ?></div>
           <div class="poster-sub"><?= $b['page_count'] !== null ? (int) $b['page_count'] . ' pages · ' : '' ?><?= h(wk_bytes((int) $b['file_size'])) ?></div>
         </a>
-        <button type="button" class="poster-menu js-move" data-book="<?= $bid ?>" data-title="<?= h($b['title']) ?>" title="Move this volume to another series" aria-label="Move <?= h($b['title']) ?> to another series"><?= wk_icon('move', 'icon icon-sm') ?></button>
+        <?php if ($admin): ?><button type="button" class="poster-menu js-move" data-book="<?= $bid ?>" data-title="<?= h($b['title']) ?>" title="Move this volume to another series" aria-label="Move <?= h($b['title']) ?> to another series"><?= wk_icon('move', 'icon icon-sm') ?></button><?php endif ?>
       </div>
     <?php endforeach ?>
   </div>
@@ -168,7 +188,7 @@ wk_page_start($series['title'], ['library', 'series'], 'library');
     <dl>
       <?php if ($altTitles): ?><div><dt>Also known as</dt><dd><?= h(implode(' · ', $altTitles)) ?></dd></div><?php endif ?>
       <div><dt>Library</dt><dd><?= h($series['library']['name'] ?? '') ?></dd></div>
-      <?php if ($series['folder']): ?><div><dt>Folder</dt><dd><code><?= h($series['folder']) ?></code></dd></div><?php endif ?>
+      <?php if ($admin && $series['folder']): ?><div><dt>Folder</dt><dd><code><?= h($series['folder']) ?></code></dd></div><?php endif ?>
       <div><dt>Added</dt><dd><?= h(date('Y-m-d', (int) $series['added_at'])) ?></dd></div>
       <div><dt>Metadata</dt><dd><?= h(match ($status) {
           'matched' => 'Matched automatically' . ($series['match_score'] !== null ? ' (' . round((float) $series['match_score'] * 100) . '% confidence)' : ''),

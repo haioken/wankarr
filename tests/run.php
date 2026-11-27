@@ -108,5 +108,27 @@ check('import name chapter', wk_import_volume_name(null, 12.5, 'x'), 'Chapter 12
 check('import name both', wk_import_volume_name(1.0, 3.0, 'x'), 'Vol. 1 Ch. 3');
 check('import name fallback', wk_import_volume_name(null, null, 'Extras'), 'Extras');
 
+// --- auth helpers ------------------------------------------------------------------------
+
+$hash = wk_password_hash('correct horse battery');
+check_true('password hash verifies', password_verify('correct horse battery', $hash));
+check_true('password hash rejects wrong', !password_verify('Correct horse battery', $hash));
+check_true('password hash is argon2id or bcrypt', str_starts_with($hash, '$argon2id$') || str_starts_with($hash, '$2y$'));
+check_true('password hash current', !wk_password_needs_rehash($hash));
+check_true('short password rejected', $threw(fn() => wk_validate_password('short')));
+check_true('bad username rejected', $threw(fn() => wk_validate_username('a b')));
+check('username trimmed', wk_validate_username('  Alice_1 '), 'Alice_1');
+check_true('bad email rejected', $threw(fn() => wk_validate_email('nope@')));
+check('empty email is null', wk_validate_email('  '), null);
+check('rating "adult" means no limit', wk_validate_rating('pornographic'), null);
+check_true('unknown rating rejected', $threw(fn() => wk_validate_rating('x')));
+check('allowed ratings: suggestive', wk_allowed_ratings(['max_rating' => 'suggestive']), ['safe', 'suggestive']);
+check('allowed ratings: none', wk_allowed_ratings(['max_rating' => null]), null);
+check('safe next: relative path', wk_safe_next('/series.php?id=3'), '/series.php?id=3');
+check('safe next: other host', wk_safe_next('//evil.example/x'), './');
+check('safe next: absolute URL', wk_safe_next('https://evil.example/'), './');
+check('safe next: backslash trick', wk_safe_next('/\\evil.example'), './');
+check('user agent label', wk_user_agent_label('Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0'), 'Firefox on Linux');
+
 echo $failures ? "$failures of $count checks failed\n" : "All $count checks passed\n";
 exit($failures ? 1 : 0);

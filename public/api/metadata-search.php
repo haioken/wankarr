@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_admin(true);
 
 /** Candidates from the metadata provider for a series, scored against it. */
 

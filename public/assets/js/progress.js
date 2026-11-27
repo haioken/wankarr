@@ -1,34 +1,60 @@
-// Per-device reading progress and per-book reader preferences (localStorage).
+// Reading progress and reader preferences, stored per user on the server.
 
-const safe = (fn, fallback = null) => { try { return fn(); } catch { return fallback; } };
+const HEADERS = { 'Content-Type': 'application/json', 'X-Requested-With': 'wankarr' };
+const post = (body, keepalive = false) => fetch('api/progress.php', { method: 'POST', headers: HEADERS, body: JSON.stringify(body), keepalive }).catch(() => {});
 
-export function readProgress(id) {
-  return safe(() => JSON.parse(localStorage.getItem('wk:progress:' + id)));
+let pending = null;
+let timer = 0;
+
+function flush(keepalive = false) {
+  clearTimeout(timer);
+  if (!pending) return;
+  const body = { action: 'progress', ...pending };
+  pending = null;
+  post(body, keepalive);
 }
 
-export function saveProgress(id, title, page, total) {
-  safe(() => {
-    const entry = { page, total, at: Date.now() };
-    localStorage.setItem('wk:progress:' + id, JSON.stringify(entry));
-    localStorage.setItem('wk:last', JSON.stringify({ id, title, page, total }));
-  });
+/** Debounced: page turns are cheap, saving every one isn't necessary. */
+export function saveProgress(bookId, page, total) {
+  pending = { book: +bookId, page, total };
+  clearTimeout(timer);
+  timer = setTimeout(() => flush(), 800);
 }
 
-export function lastRead() {
-  return safe(() => JSON.parse(localStorage.getItem('wk:last')));
+// Leaving the page: send what's pending even as the page unloads.
+addEventListener('pagehide', () => flush(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush(true); });
+
+/** Direction/layout are per user; "cover on its own" is per volume. */
+export function savePrefs(bookId, prefs) {
+  post({ action: 'prefs', book: +bookId, prefs: { direction: prefs.direction, layout: prefs.layout }, cover_alone: !!prefs.coverAlone });
 }
 
-export function loadPrefs(id) {
-  const global = safe(() => JSON.parse(localStorage.getItem('wk:prefs')), {}) || {};
-  const book = (id && safe(() => JSON.parse(localStorage.getItem('wk:prefs:' + id)), {})) || {};
-  return { ...global, ...book };
-}
-
-/** Direction and layout are remembered globally; cover offset is per book. */
-export function savePrefs(id, prefs) {
-  safe(() => {
-    const { coverAlone, ...global } = prefs;
-    localStorage.setItem('wk:prefs', JSON.stringify(global));
-    if (id) localStorage.setItem('wk:prefs:' + id, JSON.stringify({ coverAlone }));
-  });
+/**
+ * One-time move of progress saved in this browser by earlier versions
+ * (localStorage) to the signed-in account.
+ */
+export async function migrateLocalState() {
+  let keys;
+  try {
+    if (localStorage.getItem('wk:migrated')) return;
+    keys = Object.keys(localStorage).filter((k) => /^wk:progress:\d+$/.test(k));
+  } catch { return; }
+  const items = [];
+  for (const k of keys) {
+    try {
+      const p = JSON.parse(localStorage.getItem(k));
+      if (p && Number.isFinite(p.page) && Number.isFinite(p.total)) items.push({ book: +k.split(':')[2], page: p.page, total: p.total, at: p.at ? Math.round(p.at / 1000) : null });
+    } catch {}
+  }
+  let prefs = null;
+  try { prefs = JSON.parse(localStorage.getItem('wk:prefs')); } catch {}
+  if (items.length || prefs) {
+    const res = await fetch('api/progress.php', { method: 'POST', headers: HEADERS, body: JSON.stringify({ action: 'import', items, prefs }) }).catch(() => null);
+    if (!res?.ok) return;
+  }
+  try {
+    for (const k of Object.keys(localStorage)) if (/^wk:(progress:\d+|prefs(:\d+)?|last)$/.test(k)) localStorage.removeItem(k);
+    localStorage.setItem('wk:migrated', '1');
+  } catch {}
 }

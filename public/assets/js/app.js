@@ -1,6 +1,7 @@
 // Global behaviour on every page: theme, sidebar drawer, header search
 // suggestions, and background-task activity.
 import { api, toast } from './ui.js';
+import { migrateLocalState } from './progress.js';
 
 // --- theme ------------------------------------------------------------------------
 
@@ -110,7 +111,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-if (!document.body.classList.contains('reader-page')) pollTasks();
+if (document.body.dataset.role && !document.body.classList.contains('reader-page')) pollTasks();
 
 export { pollTasks };
 
@@ -123,3 +124,12 @@ for (const sel of document.querySelectorAll('select.js-filter-select')) {
     location.href = url.toString();
   });
 }
+
+// --- account ------------------------------------------------------------------------------
+
+document.querySelector('.js-logout')?.addEventListener('click', async () => {
+  try { await api('api/auth.php', { action: 'logout' }); } catch {}
+  location.href = 'login.php';
+});
+
+if (document.body.dataset.role) migrateLocalState();

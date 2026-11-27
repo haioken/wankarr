@@ -51,6 +51,35 @@ return [
         'batch' => 150,
     ],
 
+    'auth' => [
+        // Let visitors create their own (non-admin) accounts. Off unless set.
+        'signup' => filter_var(getenv('WANKARR_SIGNUP') ?: 'false', FILTER_VALIDATE_BOOL),
+        // Content-rating limit for self-registered accounts: safe,
+        // suggestive, erotica, or empty for no limit. Admins can change it.
+        'signup_max_rating' => getenv('WANKARR_SIGNUP_MAX_RATING') ?: null,
+        // Public address used in emailed links, e.g. https://manga.example.com.
+        // Required for email verification and password reset, so a forged
+        // Host header can never redirect those links elsewhere.
+        'base_url' => getenv('WANKARR_BASE_URL') ?: null,
+        // How long "remember me" sessions last without use, in days.
+        'session_days' => (int) (getenv('WANKARR_SESSION_DAYS') ?: 30),
+        // Behind a reverse proxy: trust X-Forwarded-For / X-Forwarded-Proto
+        // (client IPs for login throttling, HTTPS for secure cookies).
+        'trust_proxy' => filter_var(getenv('WANKARR_TRUST_PROXY') ?: 'false', FILTER_VALIDATE_BOOL),
+    ],
+
+    // Outgoing mail for signup verification and password resets.
+    'smtp' => [
+        'host' => getenv('WANKARR_SMTP_HOST') ?: null,
+        'port' => (int) (getenv('WANKARR_SMTP_PORT') ?: 587),
+        // starttls (port 587), tls (implicit TLS, port 465) or none.
+        'security' => getenv('WANKARR_SMTP_SECURITY') ?: 'starttls',
+        'user' => getenv('WANKARR_SMTP_USER') ?: null,
+        'pass' => getenv('WANKARR_SMTP_PASS') ?: null,
+        'from' => getenv('WANKARR_SMTP_FROM') ?: null,
+        'from_name' => getenv('WANKARR_SMTP_FROM_NAME') ?: 'wankarr',
+    ],
+
     // CLI PHP used to run background tasks. Detected automatically; set it
     // when running under php-fpm with php in an unusual location.
     'php_binary' => getenv('WANKARR_PHP') ?: null,

@@ -15,6 +15,11 @@ export async function api(url, body) {
   const res = await fetch(url, opts);
   let data = null;
   try { data = await res.json(); } catch {}
+  if (res.status === 401 && data?.login) {
+    // Session ended: sign in again and come back here.
+    location.href = `login.php?next=${encodeURIComponent(location.pathname + location.search)}`;
+    await new Promise(() => {});
+  }
   if (!res.ok) throw new Error(data?.error || `Request failed (HTTP ${res.status})`);
   return data;
 }

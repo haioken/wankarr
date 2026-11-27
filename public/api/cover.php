@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require __DIR__ . '/../../src/bootstrap.php';
+wk_require_user(true);
 
 /**
  * Covers. ?series=ID → metadata poster, else its first book's first page.
@@ -9,7 +10,7 @@ require __DIR__ . '/../../src/bootstrap.php';
 
 $book = null;
 if ($sid = wk_int($_GET['series'] ?? null)) {
-    $series = wk_one('SELECT id, metadata_id FROM series WHERE id = ?', [$sid]);
+    $series = wk_series_accessible($sid) ? wk_one('SELECT id, metadata_id FROM series WHERE id = ?', [$sid]) : null;
     if ($series === null) {
         wk_fail(404, 'Not found');
     }
@@ -20,6 +21,9 @@ if ($sid = wk_int($_GET['series'] ?? null)) {
     $book = wk_series_books($sid)[0] ?? null;
 } elseif ($bid = wk_int($_GET['book'] ?? null)) {
     $book = wk_one('SELECT * FROM books WHERE id = ?', [$bid]);
+    if ($book && !wk_series_accessible((int) $book['series_id'])) {
+        $book = null;
+    }
 }
 
 $node = $book ? wk_book_node($book) : null;

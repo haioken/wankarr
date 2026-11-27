@@ -19,6 +19,8 @@ require __DIR__ . '/tasks.php';
 require __DIR__ . '/naming.php';
 require __DIR__ . '/organize.php';
 require __DIR__ . '/import.php';
+require __DIR__ . '/mail.php';
+require __DIR__ . '/auth.php';
 require __DIR__ . '/layout.php';
 
 function wk_config(): array

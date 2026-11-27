@@ -12,11 +12,15 @@ require __DIR__ . '/../../src/bootstrap.php';
  *   rename    {title, sort_title?}
  *   merge     {into}                  move all volumes into another series
  * POST {action, ids: [..]}             bulk actions on a selection
- *   hide | unhide | rescan | delete-preview | delete {files: bool}
+ *   hide | unhide                      (any user; affects only their own view)
+ *   rescan | delete-preview | delete   (admin; delete removes files from disk)
  */
 
-wk_api(function () {
+$me = wk_require_user(true);
+
+wk_api(function () use ($me) {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        wk_require_admin(true);
         $rows = wk_series_list(['q' => (string) ($_GET['q'] ?? ''), 'limit' => 25, 'library' => wk_int($_GET['library'] ?? null)]);
         return array_map(fn($r) => [
             'id' => (int) $r['id'], 'title' => $r['title'], 'year' => $r['year'], 'volumes' => (int) $r['book_count'],
@@ -27,16 +31,20 @@ wk_api(function () {
 
     // Bulk actions over a selection.
     $ids = array_values(array_filter(array_map('intval', (array) ($body['ids'] ?? []))));
+    $ids = array_values(array_filter($ids, 'wk_series_accessible'));
     switch ($body['action'] ?? '') {
         case 'hide':
-            return wk_series_delete($ids, false);
+            return ['ok' => true, 'hidden' => wk_hide_series((int) $me['id'], $ids, true)];
         case 'unhide':
-            wk_q('UPDATE series SET hidden = 0 WHERE id IN (' . wk_in($ids) . ')', $ids ?: [0]);
-            return ['ok' => true, 'unhidden' => count($ids)];
+            return ['ok' => true, 'unhidden' => wk_hide_series((int) $me['id'], $ids, false)];
+    }
+
+    wk_require_admin(true);
+    switch ($body['action'] ?? '') {
         case 'delete-preview':
             return array_map(fn($e) => array_diff_key($e, ['root' => 1]), wk_delete_plan($ids));
         case 'delete':
-            return wk_series_delete($ids, !empty($body['files']));
+            return wk_series_delete($ids, true);
         case 'rescan':
             return wk_rescan_series($ids);
     }
