@@ -3,7 +3,8 @@ declare(strict_types=1);
 
 /**
  * Dependency-free unit tests for the pure logic (no database or network):
- * file-name parsing, title matching, naming templates and sanitising.
+ * file-name parsing, title matching, naming templates and sanitising, plus
+ * folder classification against a throwaway temp directory.
  *
  *   php tests/run.php
  */
@@ -45,6 +46,15 @@ $cases = [
     ['Witch Hat Atelier #64.cbz', 'Witch Hat Atelier', null, 64.0, null, 'Chapter 64'],
     ['[Oshi no Ko] v01.cb7', '[Oshi no Ko]', 1.0, null, null, 'Volume 1'],
     ['Vol 01.cbz', null, 1.0, null, null, 'Volume 1'],
+    // raw releases: download-site prefixes, Japanese markers, alternate copies
+    ['DLRAW.NET-Flying Witch v01.cbz', 'Flying Witch', 1.0, null, null, 'Volume 1'],
+    ['13DL.APP_Karakai_Takagi-san_v20b.cbz', 'Karakai Takagi-san', 20.0, null, null, 'Volume 20b'],
+    ['DLRAW.NET-[石塚千尋] ふらいんぐうぃっち 第01巻 [別スキャン].zip', 'ふらいんぐうぃっち', 1.0, null, null, 'Volume 1'],
+    ['からかい上手の高木さん 第07巻 LQ.cbz', 'からかい上手の高木さん', 7.0, null, null, 'Volume 7'],
+    ['ふらいんぐうぃっち 第１２巻.cbz', 'ふらいんぐうぃっち', 12.0, null, null, 'Volume 12'],
+    ['高木さん 3巻.cbz', '高木さん', 3.0, null, null, 'Volume 3'],
+    ['進撃の巨人 第139話.cbz', '進撃の巨人', null, 139.0, null, 'Chapter 139'],
+    ['Dr.Stone v01.cbz', 'Dr.Stone', 1.0, null, null, 'Volume 1'],
 ];
 foreach ($cases as [$file, $series, $vol, $ch, $year, $title]) {
     $p = wk_parse_name($file);
@@ -55,6 +65,47 @@ foreach ($cases as [$file, $series, $vol, $ch, $year, $title]) {
     check("parse title: $file", $p['title'], $title);
 }
 check('parse folder (not a file)', wk_parse_name('Volume 03', false)['volume'], 3.0);
+check('parse folder bare number stays a title', wk_parse_name('13DL.APP_Takagi-san 01', false)['title'], 'Takagi-san 01');
+check('site prefix only', wk_clean_title('DLRAW.NET-単ページ'), '単ページ');
+check('site prefix needs a known domain', wk_clean_title('Mr.Me v01'), 'Mr.Me v01');
+check('volume range', wk_volume_range('13DL.APP_Karakai_Takagi-san vol 01-20'), [1.0, 20.0]);
+check('volume range with variant', wk_volume_range('Flying Witch v01-04b'), [1.0, 4.0]);
+check('volume range none', wk_volume_range('Flying Witch v04'), null);
+$pp = wk_parse_path('Takagi-san vol 01-20/Karakai Takagi-san v01-03/13DL.APP_Takagi-san 02', false);
+check('path: bare number inside a volume pack', [$pp['volume'], $pp['title']], [2.0, 'Volume 2']);
+$pp = wk_parse_path('Takagi-san vol 01-20/Karakai Takagi-san v01-03/Takagi-san 25', false);
+check('path: number outside the pack range', [$pp['volume'], $pp['title']], [null, 'Takagi-san 25']);
+$pp = wk_parse_path('Berserk/Berserk 001.cbz');
+check('path: no pack keeps the bare chapter', [$pp['volume'], $pp['chapter']], [null, 1.0]);
+
+// --- classifying folders ------------------------------------------------------------------
+
+$tmp = sys_get_temp_dir() . '/wk-test-' . bin2hex(random_bytes(4));
+$mk = function (string $dir, int $images, array $subdirs = []) use ($tmp) {
+    @mkdir("$tmp/$dir", 0o777, true);
+    for ($i = 1; $i <= $images; $i++) {
+        touch(sprintf('%s/%s/%03d.jpg', $tmp, $dir, $i));
+    }
+    foreach ($subdirs as $sub) {
+        @mkdir("$tmp/$dir/$sub", 0o777, true);
+    }
+    return "$tmp/$dir";
+};
+check('classify: page folder', wk_classify($mk('a', 20)), ['book', 'dir']);
+check('classify: pages + extras subfolder', wk_classify($mk('b', 20, ['単ページ'])), ['book', 'dir']);
+check('classify: cover art + volume folders', wk_classify($mk('c', 1, ['Volume 1', 'Volume 2'])), ['folder', null]);
+check('classify: NAS thumbnails ignored', wk_classify($mk('d', 3, ['@eaDir'])), ['book', 'dir']);
+touch("$tmp/b/単ページ/001.jpg");
+touch("$tmp/d/@eaDir/thumb.jpg");
+check('pages include subfolder extras', count(wk_dir_images("$tmp/b")), 21);
+check('pages skip NAS thumbnails', count(wk_dir_images("$tmp/d")), 3);
+$rm = function (string $dir) use (&$rm) {
+    foreach (array_diff(scandir($dir), ['.', '..']) as $e) {
+        is_dir("$dir/$e") ? $rm("$dir/$e") : unlink("$dir/$e");
+    }
+    rmdir($dir);
+};
+$rm($tmp);
 
 // --- normalising + similarity ---------------------------------------------------------
 

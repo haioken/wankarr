@@ -96,10 +96,20 @@ function wk_book_node(array $book): ?array
 }
 
 /**
+ * A folder with at least this many images of its own is a volume even when it
+ * also has subfolders (raw releases put extras like "単ページ" in one). Fewer,
+ * and the images are taken to be series art (cover.jpg) next to volume folders.
+ */
+const WK_DIR_BOOK_MIN_PAGES = 8;
+
+/**
  * Decide what a path is.
- *  - archive file               => book
- *  - dir with only images       => book (loose image folder)
- *  - dir with subdirs/archives  => folder
+ *  - archive file                        => book
+ *  - dir with archives                   => folder
+ *  - dir with images and no subdirs      => book (loose image folder)
+ *  - dir with 8+ images and subdirs      => book (subfolder images are part of it)
+ *  - dir with subdirs                    => folder
+ * NAS housekeeping folders (@eaDir, __MACOSX, …) don't count.
  */
 function wk_classify(string $abs): array
 {
@@ -113,24 +123,29 @@ function wk_classify(string $abs): array
     if (!is_dir($abs)) {
         return [null, null];
     }
-    $hasImages = false;
+    $images = 0;
+    $subdirs = false;
     $dh = @opendir($abs);
     if ($dh === false) {
         return [null, null];
     }
     while (($entry = readdir($dh)) !== false) {
-        if ($entry[0] === '.') {
+        if ($entry[0] === '.' || in_array($entry, WK_SKIP_NAMES, true)) {
             continue;
         }
-        $path = $abs . '/' . $entry;
-        if (is_dir($path) || in_array(wk_ext($entry), WK_ARCHIVE_EXT, true)) {
+        if (in_array(wk_ext($entry), WK_ARCHIVE_EXT, true)) {
             closedir($dh);
             return ['folder', null];
         }
-        if (!$hasImages && wk_is_image_name($entry)) {
-            $hasImages = true;
+        if (is_dir($abs . '/' . $entry)) {
+            $subdirs = true;
+        } elseif (wk_is_image_name($entry)) {
+            $images++;
         }
     }
     closedir($dh);
-    return $hasImages ? ['book', 'dir'] : [null, null];
+    if ($subdirs) {
+        return $images >= WK_DIR_BOOK_MIN_PAGES ? ['book', 'dir'] : ['folder', null];
+    }
+    return $images ? ['book', 'dir'] : [null, null];
 }

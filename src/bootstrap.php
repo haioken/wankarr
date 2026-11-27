@@ -6,6 +6,8 @@ const WK_ROOT = __DIR__ . '/..';
 define('WK_VERSION', trim((string) @file_get_contents(WK_ROOT . '/VERSION')) ?: '0.0.0-dev');
 const WK_IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'bmp'];
 const WK_ARCHIVE_EXT = ['cbz', 'zip', 'cbr', 'rar', 'cb7', '7z', 'cbt', 'tar'];
+// Housekeeping folders from NASes and archivers: never volumes, never pages.
+const WK_SKIP_NAMES = ['__MACOSX', '@eaDir', '#recycle', '$RECYCLE.BIN', 'lost+found'];
 
 require __DIR__ . '/http.php';
 require __DIR__ . '/db.php';

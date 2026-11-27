@@ -127,14 +127,7 @@ function wk_book_count_pages(array $node): ?int
             $zip->close();
             return $n;
         case 'dir':
-            $n = 0;
-            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($node['abs'], FilesystemIterator::SKIP_DOTS));
-            foreach ($it as $f) {
-                if ($f->isFile() && !$f->isLink() && wk_is_image_name($f->getPathname())) {
-                    $n++;
-                }
-            }
-            return $n;
+            return count(wk_dir_images($node['abs']));
         default:
             $names = wk_cli_list($node['abs'], $node['format']);
             return $names ? count(array_filter($names, 'wk_is_image_name')) : null;
@@ -196,9 +189,10 @@ function wk_zip_scan(string $abs): array
 function wk_dir_images(string $root): array
 {
     $names = [];
-    $it = new RecursiveIteratorIterator(
+    $it = new RecursiveIteratorIterator(new RecursiveCallbackFilterIterator(
         new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-    );
+        fn(SplFileInfo $f) => !in_array($f->getFilename(), WK_SKIP_NAMES, true) && $f->getFilename()[0] !== '.',
+    ));
     foreach ($it as $file) {
         /** @var SplFileInfo $file */
         if ($file->isLink() || !$file->isFile()) {
