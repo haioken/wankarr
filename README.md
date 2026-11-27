@@ -9,20 +9,17 @@ two-page, page-curl reader. It's plain PHP (page scripts plus function
 includes, no framework or MVC) and vanilla ES-module JavaScript, styled with
 Sonarr's light and dark palettes.
 
-> Replace `<owner>/<repo>` below with your GitHub repository, in lower case
-> (for example `someone/wankarr`).
-
 ## Deploying with Docker
 
 Images are published to the GitHub Container Registry:
 
 | Tag | What it is |
 | --- | --- |
-| `ghcr.io/<owner>/<repo>:latest` | The newest stable release (never a pre-release or `main`) |
-| `ghcr.io/<owner>/<repo>:0.3.0` | Exactly that release |
-| `ghcr.io/<owner>/<repo>:0.3`, `:0` | The newest release in that line (gets patch updates) |
-| `ghcr.io/<owner>/<repo>:dev` | The current `main` branch: newest, least tested |
-| `ghcr.io/<owner>/<repo>:sha-1a2b3c4` | One exact `main` commit |
+| `ghcr.io/haioken/wankarr:latest` | The newest stable release (never a pre-release or `main`) |
+| `ghcr.io/haioken/wankarr:0.3.0` | Exactly that release |
+| `ghcr.io/haioken/wankarr:0.3`, `:0` | The newest release in that line (gets patch updates) |
+| `ghcr.io/haioken/wankarr:dev` | The current `main` branch: newest, least tested |
+| `ghcr.io/haioken/wankarr:sha-1a2b3c4` | One exact `main` commit |
 
 Images are built for `linux/amd64` and `linux/arm64`. They're about 60 MB:
 Alpine Linux with nginx, PHP-FPM 8.4 and bsdtar (for CBR/CB7/CBT), under
@@ -36,7 +33,7 @@ container:
 ```yaml
 services:
   wankarr:
-    image: ghcr.io/<owner>/<repo>:latest
+    image: ghcr.io/haioken/wankarr:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -94,7 +91,7 @@ docker run -d --name wankarr \
   -v /path/to/wankarr/config:/config \
   -v /path/to/manga:/manga \
   --restart unless-stopped \
-  ghcr.io/<owner>/<repo>:latest
+  ghcr.io/haioken/wankarr:latest
 ```
 
 ### Container settings
