@@ -5,7 +5,7 @@
 # worker. GPL-3.0-or-later.
 #   /config  database (SQLite by default), caches, logs, optional config.php
 #   /manga   your library
-FROM alpine:3.23
+FROM alpine:3.24
 
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
