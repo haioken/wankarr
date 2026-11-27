@@ -5,6 +5,8 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
 ### Added
 - Reader: two-page spreads with a page-curl turn, right-to-left by default, wide-page spreads, touch/mouse/keyboard controls.
 - Library: CBZ/ZIP, CBR, CB7, CBT and image-folder volumes, grouped into series; MariaDB or SQLite storage.
