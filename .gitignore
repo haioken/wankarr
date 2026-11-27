@@ -3,3 +3,7 @@
 /library/
 /dist/
 /config.local.php
+# SQLite databases copied in for debugging (live data: never commit)
+*.db
+*.db-shm
+*.db-wal

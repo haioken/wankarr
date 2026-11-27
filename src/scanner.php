@@ -14,8 +14,6 @@ declare(strict_types=1);
  * as aliases, so manual grouping survives rescans.
  */
 
-const WK_SKIP_NAMES = ['__MACOSX', '@eaDir', '#recycle', '$RECYCLE.BIN', 'lost+found'];
-
 /** Scan every library (or one). $progress receives human-readable status. */
 function wk_scan(?int $libraryId = null, ?callable $progress = null): array
 {
@@ -73,8 +71,11 @@ function wk_scan_library(array $lib, ?callable $progress = null, ?array $scope =
         }
     }
 
+    // After a parser upgrade, unchanged volumes are re-read for their titles too.
+    $reparse = wk_setting("parser_version:$libId") !== (string) WK_PARSER_VERSION;
+
     $existing = [];
-    foreach (wk_all('SELECT id, series_id, rel_path, path_hash, format, file_size, file_mtime FROM books WHERE library_id = ?', [$libId]) as $row) {
+    foreach (wk_all('SELECT id, series_id, rel_path, path_hash, format, file_size, file_mtime, title, volume, chapter FROM books WHERE library_id = ?', [$libId]) as $row) {
         if ($scope !== null && !in_array(explode('/', $row['rel_path'], 2)[0], $scope, true)) {
             continue; // outside the rescanned entries: leave alone
         }
@@ -88,7 +89,7 @@ function wk_scan_library(array $lib, ?callable $progress = null, ?array $scope =
     $total = count($found);
 
     foreach (array_chunk($found, 50, true) as $chunk) {
-        wk_tx(function () use ($chunk, $lib, $libId, $now, $existing, $total, $progress, &$i, &$stats, &$touched, &$seen) {
+        wk_tx(function () use ($chunk, $lib, $libId, $now, $existing, $total, $progress, $reparse, &$i, &$stats, &$touched, &$seen) {
             foreach ($chunk as $rel => [$format, $abs]) {
                 $i++;
                 $hash = sha1($libId . ':' . $rel);
@@ -99,13 +100,17 @@ function wk_scan_library(array $lib, ?callable $progress = null, ?array $scope =
 
                 if ($row && (int) $row['file_size'] === $size && (int) $row['file_mtime'] === $mtime && $row['format'] === $format) {
                     $seen[] = (int) $row['id'];
+                    if ($reparse && wk_scan_reparse($row, $isFile)) {
+                        $touched[(int) $row['series_id']] = true;
+                        $stats['updated']++;
+                    }
                     continue;
                 }
                 if ($progress && ($i % 10 === 0 || $i === $total)) {
                     $progress("Scanning {$lib['name']}: $i / $total");
                 }
 
-                $parsed = wk_parse_name(basename($rel), $isFile);
+                $parsed = wk_parse_path($rel, $isFile);
                 $fields = [
                     'format' => $format,
                     'file_size' => $size,
@@ -163,6 +168,10 @@ function wk_scan_library(array $lib, ?callable $progress = null, ?array $scope =
             wk_q('UPDATE series SET updated_at = ? WHERE id = ?', [$now, $sid]);
             wk_series_reindex($sid);
         }
+    }
+
+    if ($scope === null) {
+        wk_set_setting("parser_version:$libId", (string) WK_PARSER_VERSION);
     }
 
     wk_log(sprintf('scan: %s%s — %d volumes, +%d ~%d -%d, %d new series', $lib['name'], $scope !== null ? ' (' . implode(', ', $scope) . ')' : '', $stats['books'], $stats['added'], $stats['updated'], $stats['removed'], $stats['series_added']));
@@ -245,12 +254,38 @@ function wk_scan_walk(string $abs, string $rel, array &$out, int $depth): void
     }
 }
 
+/**
+ * Re-read an unchanged volume's title, volume and chapter from its path.
+ * Returns true when something changed.
+ */
+function wk_scan_reparse(array $row, bool $isFile): bool
+{
+    $p = wk_parse_path((string) $row['rel_path'], $isFile);
+    $fields = ['title' => mb_substr($p['title'], 0, 255), 'volume' => $p['volume'], 'chapter' => $p['chapter']];
+    $same = fn($a, $b) => $a === null || $b === null ? $a === $b : (float) $a === (float) $b;
+    if ($fields['title'] === $row['title'] && $same($fields['volume'], $row['volume']) && $same($fields['chapter'], $row['chapter'])) {
+        return false;
+    }
+    wk_update('books', $fields, ['id' => $row['id']]);
+    return true;
+}
+
 /** Find or create the series a newly discovered book belongs to. */
 function wk_scan_series_for(array $lib, string $rel, array $parsed): array
 {
     $parts = explode('/', $rel);
     if (count($parts) > 1) {
         $folder = $parts[0];
+        // A new volume in a folder joins the series its neighbours are in, so
+        // merges, moves and parser changes never split a folder.
+        $prefix = $folder . '/';
+        $id = wk_val(
+            'SELECT series_id FROM books WHERE library_id = ? AND SUBSTR(rel_path, 1, ?) = ? GROUP BY series_id ORDER BY COUNT(*) DESC LIMIT 1',
+            [$lib['id'], mb_strlen($prefix), $prefix],
+        );
+        if ($id) {
+            return [(int) $id, false];
+        }
         [$title, $year] = wk_scan_folder_title($folder);
     } else {
         $folder = null;
