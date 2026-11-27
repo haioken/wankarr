@@ -1,9 +1,11 @@
 # Changelog
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org);
-`scripts/release.sh` dates the Unreleased section when a release is tagged.
+`make release` turns the Unreleased section into the next version's notes.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-11-27
 
 ### Added
 - Accounts: first start asks for an admin; database-backed users with Argon2id passwords, hashed session tokens, sign-in throttling, account page (email, password, sessions) and `bin/wankarr user …` commands.
@@ -14,6 +16,7 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ### Changed
 - Hiding a series is now per user; Delete always removes files and is admin-only.
+- Releases go through a pull request (`make release`, then `make publish` to tag it), so `main` can stay protected.
 
 ## [0.3.0] - 2026-11-27
 

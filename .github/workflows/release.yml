@@ -1,6 +1,6 @@
 name: Release
 
-# A pushed version tag (from `make release V=X.Y.Z`) becomes a GitHub Release
+# A pushed version tag (from `make publish V=X.Y.Z`) becomes a GitHub Release
 # with the changelog section as notes and the source tarball attached. The
 # container image for the tag is built by docker.yml.
 
