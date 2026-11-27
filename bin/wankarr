@@ -1,0 +1,109 @@
+#!/usr/bin/env php
+<?php
+declare(strict_types=1);
+
+/**
+ * wankarr command line.
+ *
+ *   wankarr tasks                 run every task that is due (cron: every few minutes)
+ *   wankarr worker                stay running and run due tasks (containers / systemd)
+ *   wankarr run <task>            run one task now (scan, metadata)
+ *   wankarr scan [--library=ID]   scan libraries
+ *   wankarr match <series-id>     auto-match one series
+ *   wankarr status                show tasks and library totals
+ *   wankarr migrate               create/upgrade the database schema
+ *   wankarr prune [--yes]         delete libraries removed from the config (and their series)
+ */
+
+if (PHP_SAPI !== 'cli') {
+    exit(1);
+}
+require __DIR__ . '/../src/bootstrap.php';
+
+$args = array_slice($argv, 1);
+$cmd = array_shift($args) ?? 'help';
+$opts = [];
+foreach ($args as $a) {
+    if (preg_match('/^--([\w-]+)(?:=(.*))?$/', $a, $m)) {
+        $opts[$m[1]] = $m[2] ?? true;
+    }
+}
+$out = fn(string $s) => fwrite(STDOUT, $s . "\n");
+$progress = function (string $msg) {
+    if (posix_isatty(STDOUT)) {
+        fwrite(STDOUT, "\r\033[K" . $msg);
+    }
+};
+
+try {
+    switch ($cmd) {
+        case 'migrate':
+            wk_db();
+            $out('Schema version ' . wk_setting('schema_version'));
+            break;
+
+        case 'prune':
+            $orphans = wk_orphan_libraries();
+            if (!$orphans) {
+                $out('No unconfigured libraries.');
+                break;
+            }
+            foreach ($orphans as $lib) {
+                $n = (int) wk_val('SELECT COUNT(*) FROM series WHERE library_id = ?', [$lib['id']]);
+                $out(sprintf('%s (%s): %d series', $lib['name'], $lib['path'], $n));
+            }
+            if (!isset($opts['yes'])) {
+                $out('Run again with --yes to delete these libraries and their series.');
+                break;
+            }
+            wk_q('DELETE FROM libraries WHERE id IN (' . wk_in($orphans) . ')', array_column($orphans, 'id'));
+            $out('Deleted.');
+            break;
+
+        case 'tasks':
+            wk_tasks_run_due();
+            break;
+
+        case 'worker':
+            $out('wankarr worker started; checking for due tasks every 30s');
+            while (true) {
+                wk_tasks_run_due();
+                sleep(30);
+            }
+
+        case 'run':
+            $task = $args[0] ?? '';
+            if (!wk_task_run($task)) {
+                $out("$task is already running");
+                exit(1);
+            }
+            $out(wk_val('SELECT message FROM tasks WHERE name = ?', [$task]));
+            break;
+
+        case 'scan':
+            $r = wk_scan(isset($opts['library']) ? (int) $opts['library'] : null, $progress);
+            $out("\n" . wk_task_summary('scan', $r));
+            break;
+
+        case 'match':
+            $id = (int) ($args[0] ?? 0);
+            $out(wk_auto_match($id));
+            break;
+
+        case 'status':
+            foreach (wk_tasks_state() as $t) {
+                $out(sprintf('%-18s %-8s next %s  %s', $t['label'], $t['running'] ? 'running' : 'idle',
+                    $t['next_run'] ? date('Y-m-d H:i', (int) $t['next_run']) : 'now', $t['message'] ?? ''));
+            }
+            foreach (wk_library_stats() as $k => $v) {
+                $out(sprintf('%-10s %s', $k, $v));
+            }
+            break;
+
+        default:
+            $out(trim(preg_replace('/^ \* ?/m', '', explode('*/', explode('/**', file_get_contents(__FILE__))[1])[0])));
+    }
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
+    exit(1);
+}

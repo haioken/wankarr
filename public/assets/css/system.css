@@ -1,0 +1,62 @@
+.system { display: grid; gap: 20px; }
+.system > * { min-width: 0; }
+.card {
+  padding: 16px 20px;
+  border-radius: 4px;
+  background: var(--cardBackgroundColor);
+  box-shadow: 0 0 10px var(--cardShadowColor);
+  scroll-margin-top: calc(var(--headerHeight) + var(--toolbarHeight) + 10px);
+}
+.card h2 { margin: 0 0 14px; color: var(--defaultColor); font-size: 20px; font-weight: 300; }
+.card h2 .muted { font-size: 13px; }
+.card h3 { margin: 20px 0 8px; color: var(--defaultColor); font-size: 15px; font-weight: 500; }
+
+.info-list { display: grid; gap: 6px; margin: 0; }
+.info-list > div { display: flex; gap: 16px; }
+.info-list dt { flex: none; width: 130px; color: var(--helpTextColor); }
+.info-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+
+.table-wrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; }
+.table th { padding: 8px; border-bottom: 1px solid var(--borderColor); color: var(--helpTextColor); font-weight: 500; text-align: left; white-space: nowrap; }
+.table td { padding: 8px; border-bottom: 1px solid color-mix(in srgb, var(--borderColor) 50%, transparent); vertical-align: middle; }
+.table tr:last-child td { border-bottom: 0; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.table .actions { width: 1%; text-align: right; }
+.task-message { color: var(--helpTextColor); font-size: 12px; }
+.task-message.is-error { color: var(--dangerColor); }
+
+.state { font-size: 12px; }
+.state.ok { color: var(--successColor); }
+.state.bad { color: var(--dangerColor); }
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--textColor);
+  cursor: pointer;
+}
+.icon-button:hover { color: var(--themeBlue); background: var(--defaultHoverBackgroundColor); }
+
+.log {
+  max-height: 60vh;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 4px;
+  background: var(--cardAlternateBackgroundColor);
+  font: 12px/1.6 "Ubuntu Mono", Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.log-warn { color: var(--warningColor); }
+
+@media (max-width: 600px) {
+  .info-list > div { flex-direction: column; gap: 0; }
+  .card { padding: 14px; }
+}

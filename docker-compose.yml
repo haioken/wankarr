@@ -1,0 +1,44 @@
+# wankarr with MariaDB. Replace <owner>/<repo> with your GitHub repository
+# (lower-case), and adjust the paths, PUID/PGID and password.
+#
+#   docker compose up -d      then open http://localhost:8484
+
+services:
+  wankarr:
+    image: ghcr.io/<owner>/<repo>:latest   # or :dev, or a release such as :0.3.0
+    container_name: wankarr
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8484:8080"
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+      WANKARR_DB_DSN: mysql:host=db;dbname=wankarr;charset=utf8mb4
+      WANKARR_DB_USER: wankarr
+      WANKARR_DB_PASS: change-me
+      # Several libraries instead of /manga:
+      # WANKARR_LIBRARIES: "Manga=/manga;Comics=/comics"
+    volumes:
+      - ./config:/config          # caches, logs, optional config.php
+      - /path/to/manga:/manga     # your library (needs write access for Import/Rename)
+
+  db:
+    image: mariadb:11
+    container_name: wankarr-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: wankarr
+      MARIADB_USER: wankarr
+      MARIADB_PASSWORD: change-me
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    volumes:
+      - ./db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10

@@ -1,0 +1,18 @@
+.naming-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 20px; max-width: 980px; }
+.naming-form .field { margin-bottom: 12px; }
+.naming-form input { font-family: "Ubuntu Mono", Menlo, Monaco, Consolas, monospace; }
+.form-error { grid-column: 1 / -1; margin: 0 0 8px; color: var(--dangerColor); }
+.naming-examples code { overflow-wrap: anywhere; }
+.naming-examples.is-stale { opacity: .45; }
+.tokens td { vertical-align: middle; }
+.token {
+  padding: 2px 8px;
+  border: 1px solid var(--borderColor);
+  border-radius: 3px;
+  background: var(--cardAlternateBackgroundColor);
+  color: var(--defaultColor);
+  font: 12px "Ubuntu Mono", Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.token:hover { border-color: var(--themeBlue); color: var(--themeBlue); }

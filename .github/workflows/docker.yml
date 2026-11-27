@@ -1,0 +1,125 @@
+name: Container image
+
+# Publishes ghcr.io/<owner>/<repo>:
+#   push to main          → :dev, :sha-<short>
+#   push tag vX.Y.Z       → :X.Y.Z, :X.Y, :X, :latest
+#   push tag vX.Y.Z-rc.1  → :X.Y.Z-rc.1 only (pre-releases never move :latest)
+#   manual run            → pick a ref and a channel (dev / latest / release / custom)
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to build
+        required: true
+        default: main
+      channel:
+        description: Which tags to publish
+        required: true
+        type: choice
+        default: dev
+        options: [dev, latest, release, custom]
+      tag:
+        description: Image tag for the "custom" channel (e.g. test-feature-x)
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.event_name }}-${{ github.ref }}-${{ inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Work out version and tags
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          CHANNEL: ${{ inputs.channel }}
+          CUSTOM_TAG: ${{ inputs.tag }}
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          sha=$(git rev-parse --short HEAD)
+          base=$(cat VERSION)
+
+          if [ "$EVENT" = push ]; then
+            if [[ $GITHUB_REF == refs/tags/v* ]]; then channel=release; ref=${GITHUB_REF#refs/tags/}; else channel=dev; ref=${GITHUB_REF#refs/heads/}; fi
+          else
+            channel=$CHANNEL; ref=$INPUT_REF
+          fi
+
+          tags=()
+          case "$channel" in
+            release)
+              # The ref must be a version tag (vX.Y.Z[-pre]) or the exact commit one points at.
+              v=$(git describe --tags --exact-match HEAD 2>/dev/null || true)
+              v=${v:-$ref}; v=${v#v}
+              [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "::error::'$ref' is not a release tag (vX.Y.Z)"; exit 1; }
+              version=$v
+              tags+=("$image:$v")
+              if [[ $v != *-* ]]; then
+                IFS=. read -r major minor _ <<< "$v"
+                tags+=("$image:$major.$minor" "$image:$major" "$image:latest")
+              fi
+              ;;
+            latest)
+              version="$base+$sha"
+              tags+=("$image:latest")
+              ;;
+            dev)
+              version="$base-dev.$sha"
+              tags+=("$image:dev" "$image:sha-$sha")
+              ;;
+            custom)
+              [[ $CUSTOM_TAG =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || { echo "::error::a valid 'tag' input is required for the custom channel"; exit 1; }
+              version="$base-$CUSTOM_TAG.$sha"
+              tags+=("$image:$CUSTOM_TAG")
+              ;;
+            *) echo "::error::unknown channel $channel"; exit 1 ;;
+          esac
+
+          {
+            echo "version=$version"
+            echo "revision=$(git rev-parse HEAD)"
+            echo "tags<<EOF"; printf '%s\n' "${tags[@]}"; echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "### $channel build of \`$ref\` → version \`$version\`" >> "$GITHUB_STEP_SUMMARY"
+          printf -- '- `%s`\n' "${tags[@]}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.plan.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.plan.outputs.version }}
+            REVISION=${{ steps.plan.outputs.revision }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.plan.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.plan.outputs.revision }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

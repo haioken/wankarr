@@ -1,0 +1,173 @@
+/* Library poster grid — modelled on Sonarr's series poster view. */
+
+.poster-grid {
+  --poster: 172px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--poster), 1fr));
+  gap: 20px 16px;
+}
+.poster-grid[data-size="small"] { --poster: 128px; }
+.poster-grid[data-size="large"] { --poster: 230px; }
+
+.poster {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 4px;
+  background: var(--cardBackgroundColor);
+  box-shadow: 0 0 10px var(--cardShadowColor);
+  color: var(--defaultColor);
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.poster:hover { color: var(--defaultColor); box-shadow: 0 0 12px var(--themeBlue); transform: translateY(-2px); }
+.poster:focus-visible { outline: 2px solid var(--themeBlue); outline-offset: 2px; }
+
+.poster-art {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  max-width: 100%;
+  background: var(--cardAlternateBackgroundColor);
+  overflow: hidden;
+}
+.poster-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.poster-art img.is-broken { display: none; }
+.poster-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--helpTextColor);
+}
+.poster-placeholder .icon { width: 40%; height: 40%; stroke-width: 1; }
+
+.poster-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-bottom-left-radius: 4px;
+  background: var(--themeAlternateBlue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+.is-folder .poster-badge { padding: 4px 6px; background: var(--themeLightColor); }
+
+.poster-progress {
+  height: 5px;
+  background: var(--progressBarBackgroundColor);
+}
+.poster-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--primaryColor);
+}
+.poster-progress.is-done span { background: var(--successColor); }
+
+.poster-title {
+  padding: 6px 8px 8px;
+  overflow: hidden;
+  font-size: 13px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.poster-sub {
+  margin-top: -6px;
+  padding: 0 8px 8px;
+  overflow: hidden;
+  color: var(--helpTextColor);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.poster-score { display: inline-flex; align-items: center; gap: 2px; color: #e6a817; }
+.badge-warning { padding: 3px 6px; background: var(--warningColor); }
+.badge-danger { background: var(--dangerColor); }
+
+/* Book posters on a series page carry a "move" button. */
+.poster.book { position: relative; }
+.poster-link { display: flex; flex-direction: column; color: inherit; }
+.poster-link:hover { color: inherit; }
+.poster-menu {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, .6);
+  color: #fff;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .15s ease;
+}
+.poster.book:hover .poster-menu, .poster-menu:focus-visible { opacity: 1; }
+@media (hover: none) { .poster-menu { opacity: .8; } }
+
+@media (max-width: 480px) {
+  .poster-grid { --poster: 104px; gap: 14px 10px; }
+  .poster-grid[data-size="small"] { --poster: 84px; }
+  .poster-grid[data-size="large"] { --poster: 150px; }
+}
+
+/* ---- Multi-select ---------------------------------------------------------- */
+
+.poster-cell { position: relative; display: flex; min-width: 0; }
+.poster-cell > .poster { flex: 1; min-width: 0; }
+.poster-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .45);
+  color: transparent;
+  box-shadow: 0 0 4px rgba(0, 0, 0, .5);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity .15s ease, background .15s ease;
+}
+.poster-check input { position: absolute; opacity: 0; pointer-events: none; }
+.poster-check span { display: grid; place-items: center; }
+.poster-cell:hover .poster-check,
+.poster-check:focus-within,
+.is-selecting .poster-check { opacity: 1; }
+.poster-cell.is-selected .poster-check { border-color: var(--themeBlue); background: var(--themeBlue); color: #fff; }
+.poster-cell.is-selected .poster { box-shadow: 0 0 0 3px var(--themeBlue); }
+.is-selecting .poster { cursor: pointer; }
+.is-selecting .poster:hover { transform: none; }
+@media (hover: none) { .poster-check { opacity: .85; } }
+
+.toolbar-selection { align-items: stretch; }
+.selection-count { display: flex; align-items: center; padding: 0 14px 0 6px; color: var(--themeBlue); font-weight: 500; white-space: nowrap; }
+.toolbar-button.danger:hover { color: var(--dangerColor); }
+.toolbar-button:disabled { opacity: .4; cursor: default; }
+
+.menu-slider { min-width: 240px; padding: 8px 16px 14px; }
+.menu-slider .menu-heading { display: block; padding: 4px 0 8px; }
+.menu-slider input { width: 100%; accent-color: var(--themeBlue); }
+
+.page-intro { margin: 0 0 18px; max-width: 760px; }

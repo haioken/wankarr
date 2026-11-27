@@ -1,0 +1,12 @@
+.git
+.github
+data
+data-docker
+library
+dist
+tests
+scripts
+config.local.php
+config.local.php.example
+*.md
+Makefile

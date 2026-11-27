@@ -1,0 +1,6 @@
+<?php
+// Copy to config.local.php for machine-specific settings (git-ignored).
+return [
+    'db' => ['pass' => 'change-me'],
+    // 'libraries' => [['name' => 'Manga', 'path' => '/srv/manga']],
+];

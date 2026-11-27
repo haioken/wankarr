@@ -1,0 +1,44 @@
+name: Release
+
+# A pushed version tag (from `make release V=X.Y.Z`) becomes a GitHub Release
+# with the changelog section as notes and the source tarball attached. The
+# container image for the tag is built by docker.yml.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: zip, mbstring
+      - run: scripts/lint.sh && php tests/run.php
+
+      - name: Check VERSION matches the tag
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          [ "$(cat VERSION)" = "$tag" ] || { echo "::error::VERSION ($(cat VERSION)) does not match tag $GITHUB_REF_NAME"; exit 1; }
+
+      - name: Build tarball and notes
+        run: |
+          make dist
+          v=${GITHUB_REF_NAME#v}
+          awk -v v="$v" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {if (on) exit} on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $GITHUB_REF_NAME" > notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          [[ $GITHUB_REF_NAME == *-* ]] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" dist/wankarr-*.tar.gz \
+            --title "wankarr $GITHUB_REF_NAME" --notes-file notes.md "${flags[@]}"
