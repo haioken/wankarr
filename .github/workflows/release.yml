@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
@@ -38,7 +40,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          v=${GITHUB_REF_NAME#v}
+          newest=$(git tag -l 'v*' | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
           flags=()
-          [[ $GITHUB_REF_NAME == *-* ]] && flags+=(--prerelease)
+          if [[ $v == *-* ]]; then
+            flags+=(--prerelease --latest=false)
+          elif [[ $v != "$newest" ]]; then
+            flags+=(--latest=false)   # a patch to an older line
+          fi
           gh release create "$GITHUB_REF_NAME" dist/wankarr-*.tar.gz \
             --title "wankarr $GITHUB_REF_NAME" --notes-file notes.md "${flags[@]}"

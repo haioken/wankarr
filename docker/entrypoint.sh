@@ -8,6 +8,14 @@ PGID="${PGID:-1000}"
 if [ "$(id -g www-data)" != "$PGID" ]; then groupmod -o -g "$PGID" www-data; fi
 if [ "$(id -u www-data)" != "$PUID" ]; then usermod -o -u "$PUID" www-data; fi
 
+export WANKARR_PORT="${WANKARR_PORT:-8484}"
+case "$WANKARR_PORT" in
+  ''|*[!0-9]*) echo "wankarr: WANKARR_PORT must be a port number, got '$WANKARR_PORT'" >&2; exit 1 ;;
+esac
+if [ "$WANKARR_PORT" -lt 1 ] || [ "$WANKARR_PORT" -gt 65535 ]; then
+  echo "wankarr: WANKARR_PORT out of range: $WANKARR_PORT" >&2; exit 1
+fi
+
 export WANKARR_DATA="${WANKARR_DATA:-/config}"
 export WANKARR_DB_DSN="${WANKARR_DB_DSN:-sqlite:$WANKARR_DATA/wankarr.db}"
 export WANKARR_CONFIG="${WANKARR_CONFIG:-$WANKARR_DATA/config.php}"

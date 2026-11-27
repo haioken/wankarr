@@ -2,6 +2,9 @@
 # (lower-case), and adjust the paths, PUID/PGID and password.
 #
 #   docker compose up -d      then open http://localhost:8484
+#
+# Set WANKARR_PORT (in the shell or a .env file next to this file) to use
+# another port.
 
 services:
   wankarr:
@@ -12,8 +15,9 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8484:8080"
+      - "${WANKARR_PORT:-8484}:${WANKARR_PORT:-8484}"
     environment:
+      WANKARR_PORT: ${WANKARR_PORT:-8484}
       PUID: 1000
       PGID: 1000
       TZ: Etc/UTC

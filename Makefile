@@ -2,7 +2,7 @@
 SHELL   := /bin/bash
 VERSION := $(shell cat VERSION)
 PHP     ?= php
-PORT    ?= 8080
+PORT    ?= 8484
 IMAGE   ?= wankarr
 
 .DEFAULT_GOAL := help
@@ -12,7 +12,7 @@ IMAGE   ?= wankarr
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "  \033[36m%-11s\033[0m %s\n", $$1, $$2}'
 
-dev: ## Run the PHP dev server (PORT=8080, LIBRARY=/path/to/manga)
+dev: ## Run the PHP dev server (PORT=8484, LIBRARY=/path/to/manga)
 	WANKARR_LIBRARY="$(or $(LIBRARY),$$WANKARR_LIBRARY)" $(PHP) -d opcache.revalidate_freq=0 -S 0.0.0.0:$(PORT) -t public
 
 lint: ## Syntax-check PHP (and JS if node is installed)
@@ -33,8 +33,8 @@ docker: ## Build the container image locally as $(IMAGE):local
 	  --build-arg REVISION=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
 	  -t $(IMAGE):local .
 
-docker-run: ## Run the local image (LIBRARY=/path/to/manga, data in ./data-docker)
-	docker run --rm -it -p $(PORT):8080 -v "$(or $(LIBRARY),$$PWD/library)":/manga -v "$$PWD/data-docker":/config $(IMAGE):local
+docker-run: ## Run the local image (PORT=8484, LIBRARY=/path/to/manga, data in ./data-docker)
+	docker run --rm -it -p $(PORT):$(PORT) -e WANKARR_PORT=$(PORT) -v "$(or $(LIBRARY),$$PWD/library)":/manga -v "$$PWD/data-docker":/config $(IMAGE):local
 
 release: ## Tag a release: make release V=0.4.0
 	@[ -n "$(V)" ] || { echo "usage: make release V=X.Y.Z"; exit 1; }

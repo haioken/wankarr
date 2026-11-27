@@ -2,14 +2,21 @@ name: Container image
 
 # Publishes ghcr.io/<owner>/<repo>:
 #   push to main          → :dev, :sha-<short>
-#   push tag vX.Y.Z       → :X.Y.Z, :X.Y, :X, :latest
-#   push tag vX.Y.Z-rc.1  → :X.Y.Z-rc.1 only (pre-releases never move :latest)
-#   manual run            → pick a ref and a channel (dev / latest / release / custom)
+#   push tag vX.Y.Z       → :X.Y.Z, plus :X.Y, :X and :latest when it is the
+#                           newest stable release in that line (so patching
+#                           an old line never moves :latest backwards)
+#   push tag vX.Y.Z-rc.1  → :X.Y.Z-rc.1 only
+#   manual run            → rebuild a branch/commit as :dev or a custom tag,
+#                           or a release tag (same tagging rules as a push)
+#   weekly schedule       → rebuild the newest release so it picks up
+#                           security updates to the PHP/Debian base image
 
 on:
   push:
     branches: [main]
     tags: ['v*.*.*']
+  schedule:
+    - cron: '17 4 * * 1'   # Mondays 04:17 UTC
   workflow_dispatch:
     inputs:
       ref:
@@ -21,7 +28,7 @@ on:
         required: true
         type: choice
         default: dev
-        options: [dev, latest, release, custom]
+        options: [dev, release, custom]
       tag:
         description: Image tag for the "custom" channel (e.g. test-feature-x)
         required: false
@@ -53,14 +60,19 @@ jobs:
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          sha=$(git rev-parse --short HEAD)
-          base=$(cat VERSION)
 
-          if [ "$EVENT" = push ]; then
+          if [ "$EVENT" = schedule ]; then
+            newest=$(git tag -l 'v*' | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
+            if [ -z "$newest" ]; then echo "No release yet; nothing to rebuild."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+            git checkout -q "v$newest"
+            channel=release; ref="v$newest"
+          elif [ "$EVENT" = push ]; then
             if [[ $GITHUB_REF == refs/tags/v* ]]; then channel=release; ref=${GITHUB_REF#refs/tags/}; else channel=dev; ref=${GITHUB_REF#refs/heads/}; fi
           else
             channel=$CHANNEL; ref=$INPUT_REF
           fi
+          sha=$(git rev-parse --short HEAD)
+          base=$(cat VERSION)
 
           tags=()
           case "$channel" in
@@ -72,13 +84,13 @@ jobs:
               version=$v
               tags+=("$image:$v")
               if [[ $v != *-* ]]; then
+                # Floating tags follow the newest stable release they cover.
+                newest() { git tag -l 'v*' | sed 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | grep -E "$1" | sort -V | tail -n1; }
                 IFS=. read -r major minor _ <<< "$v"
-                tags+=("$image:$major.$minor" "$image:$major" "$image:latest")
+                [ "$(newest "^$major\.$minor\.")" = "$v" ] && tags+=("$image:$major.$minor")
+                [ "$(newest "^$major\.")" = "$v" ] && tags+=("$image:$major")
+                [ "$(newest .)" = "$v" ] && tags+=("$image:latest")
               fi
-              ;;
-            latest)
-              version="$base+$sha"
-              tags+=("$image:latest")
               ;;
             dev)
               version="$base-dev.$sha"
@@ -101,16 +113,21 @@ jobs:
           printf -- '- `%s`\n' "${tags[@]}" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: docker/setup-qemu-action@v3
+        if: steps.plan.outputs.skip != 'true'
       - uses: docker/setup-buildx-action@v3
+        if: steps.plan.outputs.skip != 'true'
       - uses: docker/login-action@v3
+        if: steps.plan.outputs.skip != 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/build-push-action@v6
+        if: steps.plan.outputs.skip != 'true'
         with:
           context: .
+          pull: true   # always start from the freshest base image
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.plan.outputs.tags }}

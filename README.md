@@ -18,9 +18,10 @@ Images are published to the GitHub Container Registry:
 
 | Tag | What it is |
 | --- | --- |
-| `ghcr.io/<owner>/<repo>:latest` | The newest stable release |
-| `ghcr.io/<owner>/<repo>:0.3.0`, `:0.3`, `:0` | A specific release (or the newest in that line) |
-| `ghcr.io/<owner>/<repo>:dev` | The current `main` branch |
+| `ghcr.io/<owner>/<repo>:latest` | The newest stable release (never a pre-release or `main`) |
+| `ghcr.io/<owner>/<repo>:0.3.0` | Exactly that release |
+| `ghcr.io/<owner>/<repo>:0.3`, `:0` | The newest release in that line (gets patch updates) |
+| `ghcr.io/<owner>/<repo>:dev` | The current `main` branch: newest, least tested |
 | `ghcr.io/<owner>/<repo>:sha-1a2b3c4` | One exact `main` commit |
 
 Images are built for `linux/amd64` and `linux/arm64`.
@@ -39,8 +40,9 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8484:8080"
+      - "${WANKARR_PORT:-8484}:${WANKARR_PORT:-8484}"
     environment:
+      WANKARR_PORT: ${WANKARR_PORT:-8484}
       PUID: 1000
       PGID: 1000
       TZ: Etc/UTC
@@ -73,6 +75,9 @@ docker compose up -d
 # open http://<host>:8484
 ```
 
+To use another port, set `WANKARR_PORT` in a `.env` file next to
+`docker-compose.yml` (for example `WANKARR_PORT=9494`) or in the shell.
+
 To use an existing MariaDB server instead, drop the `db` service and point
 `WANKARR_DB_DSN` at it.
 
@@ -82,7 +87,7 @@ Without `WANKARR_DB_DSN` the container uses SQLite at `/config/wankarr.db`:
 
 ```sh
 docker run -d --name wankarr \
-  -p 8484:8080 \
+  -p 8484:8484 \
   -e PUID=1000 -e PGID=1000 -e TZ=Etc/UTC \
   -v /path/to/wankarr/config:/config \
   -v /path/to/manga:/manga \
@@ -94,7 +99,7 @@ docker run -d --name wankarr \
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
-| Port `8080` | | Web UI inside the container; map it to any host port |
+| `WANKARR_PORT` | `8484` | Port the web UI listens on inside the container |
 | Volume `/config` | | Database (SQLite), caches, logs, optional `config.php` |
 | Volume `/manga` | | Your library. It needs to be writable for Import, Rename and Delete |
 | `PUID` / `PGID` | `1000` | User/group wankarr runs as. Match the owner of your manga files |
@@ -119,7 +124,7 @@ The image runs a health check against `/api/health.php`. On start it migrates
 the database schema, retrying for up to a minute while a database container
 starts. Updating is the usual routine: `docker compose pull && docker compose up -d`.
 
-Behind a reverse proxy, forward to port 8080. Imports upload in 8 MB chunks,
+Behind a reverse proxy, forward to `WANKARR_PORT` (8484). Imports upload in 8 MB chunks,
 so the proxy's request size limit (nginx `client_max_body_size`) needs to be
 at least 10M.
 
@@ -139,7 +144,7 @@ sudo mariadb -e "CREATE DATABASE wankarr CHARACTER SET utf8mb4 COLLATE utf8mb4_u
 cp config.local.php.example config.local.php
 
 # 3. Run (the schema is created automatically)
-make dev LIBRARY=/path/to/manga        # or: php -S 0.0.0.0:8080 -t public
+make dev LIBRARY=/path/to/manga        # http://localhost:8484 (PORT=… to change)
 ```
 
 For production, point nginx/Apache + PHP-FPM at `public/` as the document
@@ -247,7 +252,7 @@ PageUp/PageDown, Home/End or the mouse wheel. Progress is stored per device.
 
 ```sh
 make            # list targets
-make dev        # dev server (LIBRARY=/path/to/manga)
+make dev        # dev server on PORT (default 8484), LIBRARY=/path/to/manga
 make check      # lint + unit tests
 make docker     # build the image locally as wankarr:local
 make docker-run # run it (LIBRARY=/path/to/manga)
@@ -260,28 +265,22 @@ GitHub Actions run:
   request, plus a test image build for pull requests.
 - [`docker.yml`](.github/workflows/docker.yml) publishes images:
   - pushes to `main` → `:dev` and `:sha-…`;
-  - version tags → `:X.Y.Z`, `:X.Y`, `:X` and `:latest` (pre-releases such as
-    `v1.0.0-rc.1` get only their own tag);
-  - **Actions → Container image → Run workflow** builds any branch, tag or
-    commit as `dev`, `latest`, `release` or a custom tag.
+  - version tags → `:X.Y.Z`, plus `:X.Y`, `:X` and `:latest` when it's the
+    newest stable release in that line (pre-releases get only their own tag);
+  - **Actions → Container image → Run workflow** rebuilds a branch or commit
+    as `dev` or a custom tag, or a release tag under the same rules.
 - [`release.yml`](.github/workflows/release.yml) turns a version tag into a
   GitHub Release, with the changelog section as notes and the tarball
   attached.
 
-The first image push creates the package on GHCR as **private**. Make it
-public under **Packages → <repo> → Package settings** if you want to pull
-it without logging in.
-
-### Releasing
+Branching, releases, hotfixes, manual builds and first-time GHCR setup are
+covered in [RELEASING.md](RELEASING.md). The short version:
 
 ```sh
-# add notes under "## [Unreleased]" in CHANGELOG.md, commit, then:
-make release V=0.4.0                 # checks, bumps VERSION, dates the changelog, tags v0.4.0
-git push origin main --follow-tags   # CI publishes the release and the images
+# notes under "## [Unreleased]" in CHANGELOG.md, committed on main, then:
+make release V=0.4.0
+git push origin main --follow-tags
 ```
-
-`VERSION` holds the current release. Dev images report
-`<version>-dev.<commit>`.
 
 ## Code map
 
@@ -302,3 +301,9 @@ src/import.php          staging, matching, copying  src/archive.php            z
 public/assets/js/flipbook.js  page-curl engine      tests/run.php              unit tests
 Dockerfile, docker/     container image             .github/workflows/         CI, images, releases
 ```
+
+## License
+
+wankarr is free software under the [GNU General Public License v3.0 or
+later](LICENSE). The bundled [fflate](https://github.com/101arrowz/fflate)
+library is MIT-licensed ([notice](public/assets/vendor/fflate.LICENSE)).

@@ -16,4 +16,7 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 - Search with fuzzy facet suggestions (genres, authors, status, type, rating, year) as pills.
 - Sonarr-style naming conventions with a previewed, validated manual rename.
 - Import: upload volumes, auto-match (manual fallback) and copy them into the library with proper names.
-- Container image published to GHCR (`latest`, `dev`, and per-release tags).
+- Container image on GHCR for `linux/amd64` and `linux/arm64`: `:latest` (newest stable release), `:X.Y.Z`/`:X.Y`/`:X`, `:dev` from `main`, weekly security rebuilds of the newest release.
+- Web UI port configurable with `WANKARR_PORT` (default 8484) in the container and Compose file.
+- Release tooling (`make release`), GitHub Releases with notes and tarball, Dependabot for Actions and the base image.
+- Licensed under GPL-3.0-or-later.
