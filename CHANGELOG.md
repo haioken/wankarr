@@ -5,6 +5,8 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-27
+
 ### Added
 - Accounts: first start asks for an admin; database-backed users with Argon2id passwords, hashed session tokens, sign-in throttling, account page (email, password, sessions) and `bin/wankarr user …` commands.
 - Two roles: admins manage library, metadata, files, settings and users; users read, search and hide series.
