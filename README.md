@@ -24,7 +24,9 @@ Images are published to the GitHub Container Registry:
 | `ghcr.io/<owner>/<repo>:dev` | The current `main` branch: newest, least tested |
 | `ghcr.io/<owner>/<repo>:sha-1a2b3c4` | One exact `main` commit |
 
-Images are built for `linux/amd64` and `linux/arm64`.
+Images are built for `linux/amd64` and `linux/arm64`. They're about 60 MB:
+Alpine Linux with nginx, PHP-FPM 8.4 and bsdtar (for CBR/CB7/CBT), under
+`tini`.
 
 ### Docker Compose (with MariaDB)
 
@@ -130,9 +132,9 @@ at least 10M.
 
 ## Running without Docker
 
-Requirements: PHP 8.2+ with `pdo_mysql` or `pdo_sqlite`, `zip`, `curl` and
-`mbstring`; MariaDB/MySQL or SQLite; and for CBR/CB7/CBT, `bsdtar`
-(libarchive), with `7z` or `unrar` as fallbacks.
+Requirements: PHP 8.2+ with `pdo_mysql` or `pdo_sqlite`, `zip`, `mbstring`,
+`fileinfo` and `openssl`; MariaDB/MySQL or SQLite; and for CBR/CB7/CBT,
+`bsdtar` (libarchive), with `7z` or `unrar` used as fallbacks when installed.
 
 ```sh
 # 1. Database (MariaDB)

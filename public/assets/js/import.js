@@ -1,6 +1,6 @@
 // Import: upload volumes (chunked), let the server group and match them,
 // review/adjust matches and volume numbers, preview destinations, import.
-import { Zip, ZipPassThrough } from '../vendor/fflate.mjs';
+import { Zip, ZipPassThrough } from '../vendor/fflate.js';
 import { api, esc, debounce, modal, toast, seriesPicker } from './ui.js';
 
 const root = document.querySelector('.js-import');

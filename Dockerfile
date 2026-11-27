@@ -1,27 +1,29 @@
 # syntax=docker/dockerfile:1
 #
-# wankarr: PHP + Apache, with bsdtar/7-Zip for CBR/CB7/CBT. GPL-3.0-or-later.
+# wankarr: Alpine + nginx + PHP-FPM (8.4), with bsdtar (libarchive) for CBR/CB7/CBT.
+# tini runs as PID 1; the entrypoint supervises php-fpm, nginx and the task
+# worker. GPL-3.0-or-later.
 #   /config  database (SQLite by default), caches, logs, optional config.php
 #   /manga   your library
-FROM php:8.4-apache-bookworm
+FROM alpine:3.23
 
 ARG VERSION=0.0.0-dev
 ARG REVISION=unknown
 
 RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends libzip-dev libzip4 libarchive-tools 7zip; \
-    docker-php-ext-install -j"$(nproc)" zip pdo_mysql opcache; \
-    apt-mark manual libzip4; \
-    apt-get purge -y --auto-remove libzip-dev; \
-    rm -rf /var/lib/apt/lists/*; \
-    php -m | grep -qiE '^pdo_sqlite$'; \
-    : > /etc/apache2/ports.conf; \
-    a2dissite 000-default; \
-    a2enmod headers
+    apk add --no-cache \
+        php84 php84-fpm php84-opcache php84-pdo php84-pdo_mysql php84-pdo_sqlite \
+        php84-zip php84-mbstring php84-fileinfo php84-posix \
+        nginx libarchive-tools tini su-exec; \
+    ln -sf /usr/bin/php84 /usr/bin/php; \
+    addgroup -g 1000 wankarr; \
+    adduser -D -H -h /app -u 1000 -G wankarr -s /sbin/nologin wankarr; \
+    rm -f /etc/php84/php-fpm.d/*.conf /etc/nginx/http.d/*.conf; \
+    rm -rf /var/cache/apk/* /usr/share/man /usr/share/doc
 
-COPY docker/apache.conf /etc/apache2/sites-enabled/wankarr.conf
-COPY docker/php.ini /usr/local/etc/php/conf.d/zz-wankarr.ini
+COPY docker/nginx.conf /etc/nginx/nginx.conf.template
+COPY docker/php-fpm.conf /etc/php84/php-fpm.conf
+COPY docker/php.ini /etc/php84/conf.d/zz-wankarr.ini
 COPY docker/entrypoint.sh /usr/local/bin/wankarr-entrypoint
 
 COPY --link bin /app/bin
@@ -33,6 +35,7 @@ RUN echo "$VERSION" > /app/VERSION && chmod +x /app/bin/wankarr /usr/local/bin/w
 ENV WANKARR_PORT=8484 \
     WANKARR_DATA=/config \
     WANKARR_LIBRARY=/manga \
+    WANKARR_PHP=/usr/bin/php84 \
     PUID=1000 \
     PGID=1000
 
@@ -46,7 +49,6 @@ WORKDIR /app
 VOLUME ["/config"]
 EXPOSE 8484
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -fsS "http://127.0.0.1:${WANKARR_PORT:-8484}/api/health.php" >/dev/null || exit 1
+    CMD wget -q -O /dev/null "http://127.0.0.1:${WANKARR_PORT:-8484}/api/health.php" || exit 1
 
-ENTRYPOINT ["wankarr-entrypoint"]
-CMD ["apache2-foreground"]
+ENTRYPOINT ["/sbin/tini", "--", "wankarr-entrypoint"]

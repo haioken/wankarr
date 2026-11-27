@@ -13,7 +13,52 @@ const WK_USER_AGENT = 'wankarr/' . WK_VERSION . ' (self-hosted manga library)';
 
 class WkHttpError extends RuntimeException {}
 
-/** GET/POST JSON with polite per-host pacing and retry on 429/5xx. */
+/**
+ * One HTTP GET using PHP's built-in stream wrapper (no curl extension needed).
+ * Returns [status, headers (lower-case keys), body|null, error].
+ */
+function wk_http_get(string $url, int $timeout, array $headers = []): array
+{
+    $ctx = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => implode("\r\n", ['User-Agent: ' . WK_USER_AGENT, ...$headers]),
+            'timeout' => $timeout,
+            'follow_location' => 1,
+            'max_redirects' => 5,
+            'ignore_errors' => true, // give us the body and status on 4xx/5xx too
+            'protocol_version' => 1.1,
+        ],
+        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+    ]);
+    $error = '';
+    set_error_handler(function (int $no, string $msg) use (&$error) {
+        $error = preg_replace('/^file_get_contents\([^)]*\):\s*/', '', $msg);
+        return true;
+    });
+    try {
+        $body = file_get_contents($url, false, $ctx);
+    } finally {
+        restore_error_handler();
+    }
+    // $http_response_header holds every response in a redirect chain; the
+    // last status line starts the final response.
+    $lines = $http_response_header ?? [];
+    $status = 0;
+    $out = [];
+    foreach ($lines as $line) {
+        if (preg_match('#^HTTP/\S+\s+(\d{3})#', $line, $m)) {
+            $status = (int) $m[1];
+            $out = [];
+        } elseif (str_contains($line, ':')) {
+            [$k, $v] = explode(':', $line, 2);
+            $out[strtolower(trim($k))] = trim($v);
+        }
+    }
+    return [$status, $out, $body === false ? null : $body, $error ?: 'no response'];
+}
+
+/** GET JSON with polite per-host pacing and retry on 429/5xx. */
 function wk_http_json(string $url, int $timeout = 20): array
 {
     static $last = [];
@@ -26,29 +71,10 @@ function wk_http_json(string $url, int $timeout = 20): array
         }
         $last[$host] = microtime(true);
 
-        $headers = [];
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_CONNECTTIMEOUT => 8,
-            CURLOPT_TIMEOUT => $timeout,
-            CURLOPT_USERAGENT => WK_USER_AGENT,
-            CURLOPT_HTTPHEADER => ['Accept: application/json'],
-            CURLOPT_HEADERFUNCTION => function ($ch, $line) use (&$headers) {
-                if (str_contains($line, ':')) {
-                    [$k, $v] = explode(':', $line, 2);
-                    $headers[strtolower(trim($k))] = trim($v);
-                }
-                return strlen($line);
-            },
-        ]);
-        $body = curl_exec($ch);
-        $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $error = curl_error($ch);
+        [$status, $headers, $body, $error] = wk_http_get($url, $timeout, ['Accept: application/json']);
 
-        if ($body !== false && $status >= 200 && $status < 300) {
-            $data = json_decode((string) $body, true);
+        if ($body !== null && $status >= 200 && $status < 300) {
+            $data = json_decode($body, true);
             if (!is_array($data)) {
                 throw new WkHttpError("Invalid JSON from $host");
             }
@@ -57,9 +83,9 @@ function wk_http_json(string $url, int $timeout = 20): array
         if ($status === 404) {
             throw new WkHttpError("Not found: $url", 404);
         }
-        $retryable = $body === false || $status === 429 || $status >= 500;
+        $retryable = $status === 0 || $status === 429 || $status >= 500;
         if (!$retryable || $attempt >= 3) {
-            throw new WkHttpError($body === false ? "$host unreachable: $error" : "$host returned HTTP $status", $status);
+            throw new WkHttpError($status === 0 ? "$host unreachable: $error" : "$host returned HTTP $status", $status);
         }
         $retryAfter = (int) ($headers['retry-after'] ?? 0);
         sleep(min(30, max($retryAfter, 2 ** ($attempt + 1))));
@@ -69,20 +95,15 @@ function wk_http_json(string $url, int $timeout = 20): array
 /** Save a remote image to disk; returns true when the file exists afterwards. */
 function wk_http_download(string $url, string $dest): bool
 {
-    $tmp = $dest . '.part';
-    $fh = fopen($tmp, 'wb');
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_FILE => $fh, CURLOPT_FOLLOWLOCATION => true, CURLOPT_TIMEOUT => 30,
-        CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_USERAGENT => WK_USER_AGENT,
-    ]);
-    $ok = curl_exec($ch) && curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 200;
-    fclose($fh);
-    if ($ok && filesize($tmp) > 0) {
-        rename($tmp, $dest);
-        return true;
+    [$status, , $body] = wk_http_get($url, 30);
+    if ($status === 200 && $body !== null && $body !== '') {
+        $tmp = $dest . '.part';
+        if (file_put_contents($tmp, $body) === strlen($body)) {
+            rename($tmp, $dest);
+            return true;
+        }
+        @unlink($tmp);
     }
-    @unlink($tmp);
     return is_file($dest);
 }
 

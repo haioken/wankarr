@@ -191,8 +191,12 @@ Prefer shipping a fixed patch release quickly. If a release really has to go:
 ## Housekeeping
 
 - **Dependabot** opens weekly PRs for GitHub Actions versions and the
-  `php:*-apache` base image. Merge them once CI passes, and include base-image
-  bumps in the next release.
+  `alpine` base image. Merge them once CI passes, and include base-image bumps
+  in the next release. Moving to a new Alpine release can change the packaged
+  PHP version (`php84` in the Dockerfile), so check `make docker` and the
+  container before merging.
+- **The weekly rebuild** re-runs `apk add` against the same Alpine release,
+  which picks up its security updates (PHP, nginx, OpenSSL, libarchive).
 - **Old `:sha-…` images** pile up on GHCR. Delete them now and then under
   **Manage versions**, or add a cleanup action if it becomes a chore.
 - **Check before releasing**: `make check`, and `make docker && make
