@@ -318,9 +318,9 @@ Branching, releases, hotfixes, manual builds and first-time GHCR setup are
 covered in [RELEASING.md](RELEASING.md). The short version:
 
 ```sh
-# notes under "## [Unreleased]" in CHANGELOG.md, committed on main, then:
-make release V=0.4.0
-git push origin main --follow-tags
+# notes under "## [Unreleased]" in CHANGELOG.md, merged into main, then:
+make release V=0.5.0    # opens a release pull request; merge it once CI passes
+make publish V=0.5.0    # tags the merge and pushes the tag
 ```
 
 ## Code map
