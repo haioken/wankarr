@@ -5,6 +5,8 @@ All notable changes are listed here. Versions follow [Semantic Versioning](https
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-27
+
 ### Fixed
 - Volumes from raw releases get proper titles: download-site prefixes (`DLRAW.NET-`, `13DL.APP_`) are ignored, Japanese/Chinese volume and chapter markers (`第04巻`, `3巻`, `第12話`) and full-width digits are read, alternate copies keep their letter (`v07b` → "Volume 7b"), and a bare number inside a volume-pack folder (`… v01-03/Takagi-san 02`) is that volume.
 - Image folders that hold a volume's pages plus a subfolder (such as `単ページ` extras) are read as one volume instead of losing their pages; NAS folders like `@eaDir` and hidden files no longer count as pages or subfolders.
